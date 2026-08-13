@@ -9,6 +9,7 @@ import { TOOL_METADATA } from '../../src/mcp/tool-registry.js';
 
 const repositoryRoot = process.cwd();
 const serverEntrypoint = join(repositoryRoot, 'dist-test', 'src', 'index.js');
+const fakeAdb = join(repositoryRoot, 'tests', 'fixtures', 'fake-adb.mjs');
 
 test('MCP stdio server initializes with instructions and exposes stable tools', async () => {
   const transport = new StdioClientTransport({
@@ -48,6 +49,41 @@ test('MCP stdio server initializes with instructions and exposes stable tools', 
     const parsed = JSON.parse(text.text) as { ok: boolean; data: unknown };
     assert.equal(parsed.ok, true);
     assert.ok(Array.isArray(parsed.data));
+  } finally {
+    await client.close();
+    await transport.close();
+  }
+});
+
+test('returns image content and structured errors over MCP stdio', async () => {
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [serverEntrypoint],
+    cwd: repositoryRoot,
+    stderr: 'pipe',
+    env: {
+      PATH: process.env.PATH ?? '',
+      HOME: process.env.HOME ?? '',
+      ANDROID_DEVICE_MCP_ADB_PATH: fakeAdb,
+      ANDROID_DEVICE_MCP_ALLOWED_PACKAGES: 'com.example.app',
+    },
+  });
+  const client = new Client({ name: 'protocol-image-test', version: '1.0.0' });
+  try {
+    await client.connect(transport);
+    const selection = await client.callTool({ name: 'device_select', arguments: { serial: 'protocol-test' } });
+    assert.equal(selection.isError, false);
+    const imageResult = await client.callTool({ name: 'screen_capture', arguments: {} });
+    const content = imageResult.content as Array<{ type: string; mimeType?: string; text?: string }>;
+    assert.ok(content.some((item) => item.type === 'image' && item.mimeType === 'image/png'));
+    const companion = content.find((item) => item.type === 'text');
+    assert.ok(companion?.text?.includes('"width": 1080'));
+
+    const errorResult = await client.callTool({ name: 'app_clear_data', arguments: { package_name: 'com.example.app' } });
+    assert.equal(errorResult.isError, true);
+    const errorContent = errorResult.content as Array<{ type: string; text?: string }>;
+    const errorText = errorContent.find((item) => item.type === 'text')?.text ?? '';
+    assert.equal(JSON.parse(errorText).error.code, 'APPROVAL_REQUIRED');
   } finally {
     await client.close();
     await transport.close();
