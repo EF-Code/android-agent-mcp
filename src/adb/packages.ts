@@ -1,5 +1,6 @@
 import { ErrorCode } from '../errors/codes.js';
 import { AppError } from '../errors/app-error.js';
+import { validatePackageName } from '../validation/common.js';
 import { AdbClient } from './client.js';
 
 export interface PackageSummary {
@@ -123,6 +124,7 @@ export class AdbPackages {
   }
 
   async info(serial: string, packageName: string): Promise<PackageInfo> {
+    validatePackageName(packageName);
     const output = await this.adb.text(
       this.adb.shell(serial, ['dumpsys', 'package', packageName], {
         timeoutMs: 20_000,
@@ -162,6 +164,7 @@ export class AdbPackages {
   }
 
   async resolveLauncherActivity(serial: string, packageName: string): Promise<string | null> {
+    validatePackageName(packageName);
     const output = await this.adb.text(
       this.adb.shell(serial, ['cmd', 'package', 'resolve-activity', '--brief', packageName], {
         timeoutMs: 10_000,
@@ -179,6 +182,7 @@ export class AdbPackages {
     serial: string,
     packageName: string,
   ): Promise<{ component: string | null; output: string }> {
+    validatePackageName(packageName);
     const component = await this.resolveLauncherActivity(serial, packageName);
     if (component !== null) {
       const output = await this.adb.text(
@@ -203,6 +207,7 @@ export class AdbPackages {
   }
 
   async stop(serial: string, packageName: string): Promise<void> {
+    validatePackageName(packageName);
     await this.adb.shell(serial, ['am', 'force-stop', packageName], {
       timeoutMs: 10_000,
       maxOutputBytes: 8_192,
@@ -210,6 +215,7 @@ export class AdbPackages {
   }
 
   async clearData(serial: string, packageName: string): Promise<string> {
+    validatePackageName(packageName);
     return this.adb.text(
       this.adb.shell(serial, ['pm', 'clear', packageName], {
         timeoutMs: 30_000,
