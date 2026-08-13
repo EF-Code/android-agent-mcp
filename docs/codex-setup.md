@@ -9,14 +9,20 @@ npm run install:local
 
 The installer uses the repository lockfile, builds the server, and prints the resolved absolute entrypoint. It does not install system packages, change udev rules, restart ADB, or use elevated privileges. If dependencies are already installed, use `npm run install:local -- --skip-dependencies`.
 
-Once published, a global npm installation can be registered without a checkout:
+The published npm package can be registered without a checkout:
 
 ```zsh
 npm install --global android-agent-mcp
 codex mcp add android-device -- android-agent-mcp
 ```
 
-For a pinned one-session invocation, use `npx --yes android-agent-mcp@0.1.0` as the command and argument entrypoint in the client configuration. npm installs the MCP server only; `adb` and `scrcpy` remain host prerequisites.
+To let Codex download and run a pinned release instead, register `npx` as the executable and pass the package invocation as arguments:
+
+```zsh
+codex mcp add android-device -- npx --yes android-agent-mcp@0.1.0
+```
+
+When working inside an `android-agent-mcp` source checkout, use the compiled local entrypoint below instead of `npx` so npm does not resolve the checkout itself. npm installs the MCP server only; `adb` and `scrcpy` remain host prerequisites.
 
 Register the compiled stdio entrypoint with the Codex CLI:
 
