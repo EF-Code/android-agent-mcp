@@ -199,7 +199,16 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
   });
 
   server.registerTool('app_launch', { description: 'Launch an allowlisted package and verify it becomes foreground.', inputSchema: appPackageSchema }, async (args) => {
-    try { service.policy.assertPackageAllowed(args.package_name); const serial = await service.selectedSerial(); const started = performance.now(); const launch = await service.packages.launch(serial, args.package_name); await service.stabilize(); const foreground = await service.verifyForeground(args.package_name); return jsonContent(ok({ ...launch, startup_ms: Math.round(performance.now() - started), foreground }, { deviceSerial: serial })); } catch (error) { return toolError(error); }
+    try {
+      service.policy.assertPackageAllowed(args.package_name);
+      const serial = await service.selectedSerial();
+      const started = performance.now();
+      const launch = await service.packages.launch(serial, args.package_name);
+      await service.stabilize();
+      const foreground = await service.verifyForeground(args.package_name);
+      const crashes = await service.logcat.crashes(serial, args.package_name, 100);
+      return jsonContent(ok({ ...launch, startup_ms: Math.round(performance.now() - started), foreground, immediate_crashes: crashes }, { deviceSerial: serial }));
+    } catch (error) { return toolError(error); }
   });
 
   server.registerTool('app_stop', { description: 'Force-stop an allowlisted package.', inputSchema: appPackageSchema }, async (args) => {
