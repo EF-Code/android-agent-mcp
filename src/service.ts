@@ -127,7 +127,38 @@ export class AndroidDeviceService {
   }
 
   async selectedSerial(): Promise<string> {
-    return (await this.devices.requireSelected()).serial;
+    const selected = await this.devices.requireSelected();
+    await this.ensureAutoMirror();
+    return selected.serial;
+  }
+
+  async listDevices(): Promise<Awaited<ReturnType<DeviceManager['list']>>> {
+    const devices = await this.devices.list();
+    await this.ensureAutoMirror();
+    return devices;
+  }
+
+  async selectDevice(serial: string): Promise<Awaited<ReturnType<DeviceManager['select']>>> {
+    const result = await this.devices.select(serial);
+    await this.ensureAutoMirror();
+    return result;
+  }
+
+  private async ensureAutoMirror(): Promise<void> {
+    if (!this.config.mirror.autoStart || this.devices.selected === null) return;
+    const serial = this.devices.selected.serial;
+    const status = this.scrcpy.status();
+    if (status.running && status.deviceSerial === serial && !status.detached) return;
+    if (status.running) await this.scrcpy.stop();
+    await this.scrcpy.start(serial, {
+      maxSize: this.config.mirror.maxSize,
+      maxFps: this.config.mirror.maxFps,
+      audio: this.config.mirror.audio,
+      control: true,
+      stayAwake: false,
+      turnScreenOff: false,
+      windowTitle: 'Android Device MCP',
+    });
   }
 
   async screenObservation(serial?: string): Promise<ScreenObservation> {

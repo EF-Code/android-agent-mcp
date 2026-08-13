@@ -108,7 +108,7 @@ function registerReadOnlyTools(server: McpServer, service: AndroidDeviceService)
     },
     async () => {
       try {
-        return jsonContent(ok(await service.devices.list()));
+        return jsonContent(ok(await service.listDevices()));
       } catch (error) {
         return toolError(error);
       }
@@ -280,7 +280,10 @@ function registerReadOnlyTools(server: McpServer, service: AndroidDeviceService)
     server,
     service,
     'app_info',
-    { description: 'Inspect metadata for an allowlisted package.', inputSchema: appPackageSchema },
+    {
+      description: 'Inspect metadata for a package permitted by the current policy.',
+      inputSchema: appPackageSchema,
+    },
     async (args) => {
       try {
         service.policy.assertPackageAllowed(args.package_name);
@@ -300,7 +303,7 @@ function registerReadOnlyTools(server: McpServer, service: AndroidDeviceService)
     service,
     'permissions_list',
     {
-      description: 'List requested and granted runtime permissions for an allowlisted package.',
+      description: 'List requested and granted runtime permissions for a policy-permitted package.',
       inputSchema: appPackageSchema,
     },
     async (args) => {
@@ -366,7 +369,7 @@ function registerReadOnlyTools(server: McpServer, service: AndroidDeviceService)
     service,
     'logcat_crashes',
     {
-      description: 'Return bounded recent crash and ANR evidence for an allowlisted package.',
+      description: 'Return bounded recent crash and ANR evidence for a policy-permitted package.',
       inputSchema: appPackageSchema,
     },
     async (args) => {
@@ -395,7 +398,7 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
     },
     async (args) => {
       try {
-        const result = await service.devices.select(args.serial);
+        const result = await service.selectDevice(args.serial);
         return jsonContent(ok(result, { deviceSerial: args.serial }));
       } catch (error) {
         return toolError(error);
@@ -593,7 +596,10 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
     server,
     service,
     'key_press',
-    { description: 'Press an allowlisted Android testing key.', inputSchema: keyPressSchema },
+    {
+      description: 'Press an Android key permitted by the input policy.',
+      inputSchema: keyPressSchema,
+    },
     async (args) => {
       try {
         await service.requireAllowedForeground('key press');
@@ -641,7 +647,7 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
     service,
     'app_launch',
     {
-      description: 'Launch an allowlisted package and verify it becomes foreground.',
+      description: 'Launch a policy-permitted package and verify it becomes foreground.',
       inputSchema: appPackageSchema,
     },
     async (args) => {
@@ -680,7 +686,7 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
     server,
     service,
     'app_stop',
-    { description: 'Force-stop an allowlisted package.', inputSchema: appPackageSchema },
+    { description: 'Force-stop a policy-permitted package.', inputSchema: appPackageSchema },
     async (args) => {
       try {
         service.policy.assertPackageAllowed(args.package_name);
@@ -756,7 +762,7 @@ function registerMutationTools(server: McpServer, service: AndroidDeviceService)
     'app_clear_data',
     {
       description:
-        'Approval-required irreversible clearing of local data for an allowlisted test package.',
+        'Approval-required irreversible clearing of local data for a policy-permitted package.',
       inputSchema: clearDataSchema,
     },
     async (args) => {

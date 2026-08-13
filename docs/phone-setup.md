@@ -13,11 +13,11 @@
 
 7. Confirm the device state is `device`, not `unauthorized`, `offline`, or `no permissions`.
 
-From the repository, `npm run check:environment` performs a read-only host tool check. Use `npm run check:environment -- --require-scrcpy` when mirroring is required.
+From the repository, `npm run check:environment -- --require-scrcpy` performs the read-only host tool check required by the default visible-mirror workflow.
 
 If the state is `unauthorized`, accept the prompt on the phone. If it is `offline`, reconnect the cable and let the user decide whether to restart ADB. If it is `no permissions`, fix the Linux udev/group configuration deliberately; this server does not modify udev rules or use elevated privileges.
 
-The server will not unlock the phone, enter a PIN/password, dismiss user-consent prompts, or operate a locked device. Keep personal applications off the allowlist. Prefer a purpose-built harmless test app with a known package name and deterministic accessibility labels.
+The server will not unlock the phone, enter a PIN/password, dismiss user-consent prompts, or operate a locked device. Normal MCP control permits valid non-sensitive packages by default; use `ANDROID_DEVICE_MCP_ALLOWED_PACKAGES` to narrow the session when desired. Selecting the device starts the visible scrcpy mirror unless auto-start is disabled.
 
 ## Physical test prerequisites
 
@@ -30,4 +30,4 @@ export ANDROID_DEVICE_MCP_TEST_SELECTOR='{"text":"Continue","clickable":true}'
 npm run test:physical
 ```
 
-The harness does not invent a package, selector, or phone and does not modify personal applications. It skips unless the explicit package and selector are supplied, exactly one authorized device is connected, and the harmless test app is prepared for this workflow.
+The harness does not invent a package, selector, or phone and does not modify personal applications. It skips unless the explicit package and selector are supplied, exactly one authorized device is connected, and the harmless test app is prepared for this workflow. These variables affect only `npm run test:physical`; normal MCP control uses the configured package policy.

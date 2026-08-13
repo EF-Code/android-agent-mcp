@@ -1,6 +1,7 @@
 export type ApprovalMode = 'prompt' | 'allow' | 'deny';
 
 export interface MirrorConfig {
+  autoStart: boolean;
   maxSize: number;
   maxFps: number;
   audio: boolean;

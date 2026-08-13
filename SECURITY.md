@@ -7,7 +7,7 @@ Android Device MCP controls a USB-debug-authorized phone. That authorization is 
 - The MCP client/model supplies tool arguments and selectors; it is not trusted with arbitrary command strings.
 - The local server validates device serials, package names, paths, coordinates, durations, selectors, output sizes, and evidence labels.
 - ADB is the device control plane. Every device command uses `adb -s <validated-serial>`.
-- scrcpy is an optional visible observation plane. Only the child process created by this server is tracked and terminated.
+- scrcpy is the default visible observation/control plane. Only the child process created by this server is tracked and terminated; set mirror auto-start false for intentional headless operation.
 - The phone remains an external system. The server does not unlock it, bypass consent, elevate privileges, or defeat application security controls.
 
 ## Controls
@@ -18,7 +18,7 @@ Android Device MCP controls a USB-debug-authorized phone. That authorization is 
 - restricted inherited environment for subprocesses
 - explicit device selection when automatic single-device selection is not safe
 - one selected serial per process session; reconnects do not silently switch devices
-- configured package allowlist and sensitive-package patterns
+- default broad package policy with configurable narrowing and sensitive-package patterns
 - empty-by-default host allowlist for runtime permissions that may reach `pm grant/revoke`
 - read-only, interactive, approval-required, and prohibited operation classes
 - no arbitrary `adb shell(command)` tool
@@ -30,7 +30,7 @@ Android Device MCP controls a USB-debug-authorized phone. That authorization is 
 
 ## Sensitive applications
 
-Sensitive packages are blocked from interaction and evidence by default. Configure patterns conservatively. Do not add banking, wallet, password-manager, messaging, authentication, or personal-data packages to the allowlist for convenience.
+Sensitive packages are blocked from interaction and evidence by default. The default blocks banking, wallet, and password-style package patterns; Android Settings remains available for ordinary device control. Configure the patterns and package policy deliberately when a trusted phone-control session needs a different boundary.
 
 The default text tool supports only printable ASCII test values and rejects focused password fields. It does not install a clipboard or custom ADB keyboard helper.
 

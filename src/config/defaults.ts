@@ -8,8 +8,11 @@ export function defaultConfig(): ServerConfig {
     adbPath: 'adb',
     scrcpyPath: 'scrcpy',
     autoSelectSingleDevice: true,
-    allowedPackages: [],
-    sensitivePackages: ['com.android.settings', '*.bank.*', '*.wallet.*', '*.password*'],
+    // An Android-control agent should work with ordinary installed apps without
+    // requiring a new package entry for every task. Sensitive patterns remain a
+    // separate fail-closed boundary for credentials and financial applications.
+    allowedPackages: ['*'],
+    sensitivePackages: ['*.bank.*', '*.wallet.*', '*.password*'],
     allowedRuntimePermissions: [],
     allowedApkRoots: [join(homedir(), 'projects')],
     evidenceRoot: join(homedir(), 'android-device-mcp-evidence'),
@@ -24,6 +27,7 @@ export function defaultConfig(): ServerConfig {
     uiSnapshotMaxAgeMs: 3_000,
     approvalMode: 'prompt',
     mirror: {
+      autoStart: true,
       maxSize: 1_600,
       maxFps: 30,
       audio: false,

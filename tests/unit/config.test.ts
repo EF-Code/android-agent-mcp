@@ -17,7 +17,30 @@ test('loads defaults and applies validated environment overrides', () => {
   assert.deepEqual(config.allowedRuntimePermissions, ['android.permission.CAMERA']);
   assert.equal(config.defaultTimeoutMs, 5_000);
   assert.equal(config.mirror.audio, false);
+  assert.equal(config.mirror.autoStart, true);
   assert.equal(config.mirror.leaveRunningOnExit, false);
+});
+
+test('defaults to broad non-sensitive package control and visible mirroring', () => {
+  const config = loadConfig({ env: {} });
+  assert.deepEqual(config.allowedPackages, ['*']);
+  assert.equal(config.mirror.autoStart, true);
+  assert.equal(config.sensitivePackages.includes('*.bank.*'), true);
+  assert.equal(config.sensitivePackages.includes('com.android.settings'), false);
+});
+
+test('allows mirror auto-start to be disabled explicitly', () => {
+  const config = loadConfig({
+    env: { ANDROID_DEVICE_MCP_MIRROR_AUTO_START: 'false' },
+  });
+  assert.equal(config.mirror.autoStart, false);
+});
+
+test('allows a deliberate empty sensitive-package policy override', () => {
+  const config = loadConfig({
+    env: { ANDROID_DEVICE_MCP_SENSITIVE_PACKAGES: '' },
+  });
+  assert.deepEqual(config.sensitivePackages, []);
 });
 
 test('uses the nested mirror exit policy as the canonical setting', async () => {

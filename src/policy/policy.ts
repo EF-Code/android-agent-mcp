@@ -29,6 +29,8 @@ export class Policy {
     } catch {
       return false;
     }
+    // The default `*` policy intentionally permits general phone control. An
+    // explicit package list still narrows the trust boundary for test-only use.
     return matchesPattern(packageName, this.config.allowedPackages);
   }
 
@@ -51,7 +53,7 @@ export class Policy {
     if (!this.isPackageAllowed(packageName)) {
       throw new AppError(
         ErrorCode.PackageNotAllowed,
-        'The package is outside the configured allowlist.',
+        'The package is outside the configured package policy.',
         {
           details: {
             packageName,

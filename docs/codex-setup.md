@@ -35,7 +35,7 @@ Use an absolute path. If the project has a local configuration file, pass it thr
 ANDROID_DEVICE_MCP_CONFIG = "/absolute/path/to/android-device-mcp.json"
 ```
 
-Restart the Codex client after adding or changing an MCP server. Verify the connection with `/mcp` in the Codex TUI or by asking Codex to list the Android Device MCP tools. The server instructions are intentionally short and begin with the device-selection, semantic-action, allowlist, secret-handling, and verification rules.
+Restart the Codex client after adding or changing an MCP server. Verify the connection with `/mcp` in the Codex TUI or by asking Codex to list the Android Device MCP tools. The server instructions are intentionally short and begin with device selection, broad non-sensitive package control, secret handling, semantic actions, verification, and visible-mirror rules.
 
 ## Approval behavior
 
