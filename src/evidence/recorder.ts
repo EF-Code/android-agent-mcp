@@ -104,7 +104,14 @@ export class EvidenceSession {
   }
 
   async action(name: string, details: Record<string, unknown> = {}): Promise<void> {
+    if (this.actions.length >= this.maxFiles * 10) {
+      throw new AppError(ErrorCode.EvidencePathInvalid, 'Evidence action limit was reached.');
+    }
     this.actions.push(JSON.stringify({ at: new Date().toISOString(), name, details: sanitizeValue(details) }));
+    if (Buffer.byteLength(this.actions.join('\n')) > this.maxBytes) {
+      this.actions.pop();
+      throw new AppError(ErrorCode.EvidencePathInvalid, 'Evidence action byte limit was reached.');
+    }
     await appendFile(join(this.directory, 'actions.jsonl'), `${this.actions.at(-1)}\n`, 'utf8');
   }
 
