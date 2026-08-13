@@ -24,6 +24,11 @@ export class Policy {
   constructor(private readonly config: ServerConfig) {}
 
   isPackageAllowed(packageName: string): boolean {
+    try {
+      validatePackageName(packageName);
+    } catch {
+      return false;
+    }
     return matchesPattern(packageName, this.config.allowedPackages);
   }
 

@@ -30,6 +30,7 @@ test('redacts common credentials, emails, and password node text', () => {
 test('enforces package allowlist, sensitive patterns, and host mutation approval', () => {
   const config = { ...defaultConfig(), allowedPackages: ['com.example.*'] };
   const policy = new Policy(config);
+  assert.equal(policy.isPackageAllowed('not a package'), false);
   assert.doesNotThrow(() => policy.assertPackageAllowed('com.example.app'));
   assert.throws(
     () => policy.assertPackageAllowed('com.other.app'),
