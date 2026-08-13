@@ -9,7 +9,7 @@ The server does not call a language model and does not bypass Android locks, aut
 Implemented and locally verified:
 
 - TypeScript build and strict type-checking
-- 41 automated test cases currently report 40 passes and one explicitly skipped physical-device case
+- 46 automated test cases currently report 45 passes and one explicitly skipped physical-device case
 - ADB/scrcpy adapters with injectable command runners
 - Device discovery, explicit selection, screenshots, UIAutomator parsing, semantic selectors, input, app inspection, logcat, scrcpy ownership, and evidence sessions
 - Path-restricted APK installation and approval-gated mutations
