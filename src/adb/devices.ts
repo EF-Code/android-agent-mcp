@@ -17,13 +17,13 @@ export function parseAdbDevices(output: string, selectedSerial: string | null = 
   for (const rawLine of output.replace(/\r\n/g, '\n').split('\n')) {
     const line = rawLine.trim();
     if (line.length === 0 || line === 'List of devices attached') continue;
-    const fields = line.split(/\s+/u);
-    const serial = fields.shift();
-    const stateValue = fields.shift();
+    const match = /^(\S+)\s+(device|unauthorized|offline|no permissions|unknown)(?:\s+(.*))?$/u.exec(line);
+    if (match === null) continue;
+    const [, serial, stateValue, attributeText] = match;
     if (serial === undefined || stateValue === undefined) continue;
 
     const attributes: Record<string, string> = {};
-    for (const field of fields) {
+    for (const field of (attributeText ?? '').split(/\s+/u).filter((value) => value.length > 0)) {
       const separator = field.indexOf(':');
       if (separator > 0) attributes[field.slice(0, separator)] = field.slice(separator + 1);
     }
