@@ -180,6 +180,21 @@ export class AndroidDeviceService {
     return foreground;
   }
 
+  async waitForForeground(packageName: string, timeoutMs = 5_000, pollMs = 200): Promise<ForegroundApp> {
+    validatePackageName(packageName);
+    const started = Date.now();
+    let foreground = await this.currentForeground();
+    while (Date.now() - started <= timeoutMs) {
+      if (foreground.packageName === packageName) return foreground;
+      await new Promise((resolve) => setTimeout(resolve, pollMs));
+      foreground = await this.currentForeground();
+    }
+    throw new AppError(ErrorCode.CommandFailed, 'Application did not become the foreground package within the verification window.', {
+      retryable: true,
+      details: { expectedPackage: packageName, foreground, timeoutMs },
+    });
+  }
+
   async tapSelector(selector: UiSelector, matchIndex?: number, verifyChange = true, sourceSnapshot?: UiSnapshot): Promise<{ before: UiSnapshot; after: UiSnapshot | null; nodeId: string }> {
     const serial = await this.selectedSerial();
     const foreground = await this.requireAllowedForeground('semantic tap');

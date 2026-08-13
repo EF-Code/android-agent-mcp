@@ -16,6 +16,7 @@ export interface LogCaptureOptions {
   maxLines?: number;
   maxBytes?: number;
   includeCrashBuffer?: boolean;
+  signal?: AbortSignal;
 }
 
 export interface LogCapture {
@@ -115,6 +116,7 @@ export class AdbLogcat {
     const output = await this.adb.device(serial, args, {
       timeoutMs: Math.max(durationMs + 2_000, 5_000),
       maxOutputBytes: maxBytes,
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
       ...(options.since === undefined ? { captureDurationMs: durationMs } : {}),
     });
     const primary = splitLines(output.stdout.toString('utf8'), maxLines, maxBytes);
@@ -124,6 +126,7 @@ export class AdbLogcat {
       const crash = await this.adb.device(serial, ['logcat', '-d', '-b', 'crash', '-v', 'threadtime', '-t', String(Math.min(maxLines, 500))], {
         timeoutMs: 10_000,
         maxOutputBytes: Math.min(maxBytes, 500_000),
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
       });
       const crashLines = splitLines(crash.stdout.toString('utf8'), maxLines - lines.length, maxBytes - Buffer.byteLength(lines.join('\n')));
       lines = [...lines, ...crashLines.lines];
@@ -137,9 +140,24 @@ export class AdbLogcat {
     };
   }
 
-  async crashes(serial: string, packageName: string, maxLines = 500): Promise<CrashEvidence[]> {
+  async latestCrashEpoch(serial: string): Promise<number> {
+    const output = await this.adb.device(serial, ['logcat', '-d', '-b', 'crash', '-v', 'epoch', '-t', '1'], {
+      timeoutMs: 10_000,
+      maxOutputBytes: 16_000,
+    });
+    const timestamps = [...output.stdout.toString('utf8').matchAll(/^\s*(\d+\.\d+)/gmu)].map((match) => Number(match[1]));
+    const latest = timestamps.filter((value) => Number.isFinite(value)).at(-1);
+    return latest ?? Date.now() / 1_000;
+  }
+
+  async crashes(serial: string, packageName: string, maxLines = 500, sinceEpoch?: number): Promise<CrashEvidence[]> {
     validatePackageName(packageName);
-    const output = await this.adb.device(serial, ['logcat', '-d', '-b', 'crash', '-v', 'threadtime', '-t', String(Math.min(maxLines, 2_000))], {
+    const args = ['logcat', '-d', '-b', 'crash', '-v', 'threadtime', '-t', String(Math.min(maxLines, 2_000))];
+    if (sinceEpoch !== undefined) {
+      if (!Number.isFinite(sinceEpoch) || sinceEpoch < 0) throw new AppError(ErrorCode.InvalidInput, 'Crash baseline timestamp is invalid.');
+      args.push('-T', String(sinceEpoch));
+    }
+    const output = await this.adb.device(serial, args, {
       timeoutMs: 15_000,
       maxOutputBytes: Math.min(this.defaultMaxBytes, 2_000_000),
     });

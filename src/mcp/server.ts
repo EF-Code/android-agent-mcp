@@ -241,11 +241,11 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
       service.policy.assertPackageAllowed(args.package_name);
       const serial = await service.selectedSerial();
       const started = performance.now();
+      const crashBaselineEpoch = await service.logcat.latestCrashEpoch(serial);
       const launch = await service.packages.launch(serial, args.package_name);
-      await service.stabilize();
-      const foreground = await service.verifyForeground(args.package_name);
-      const crashes = await service.logcat.crashes(serial, args.package_name, 100);
-      return jsonContent(ok({ ...launch, startup_ms: Math.round(performance.now() - started), foreground, immediate_crashes: crashes }, { deviceSerial: serial }));
+      const foreground = await service.waitForForeground(args.package_name);
+      const crashes = await service.logcat.crashes(serial, args.package_name, 100, crashBaselineEpoch);
+      return jsonContent(ok({ ...launch, startup_ms: Math.round(performance.now() - started), foreground, immediate_crashes: crashes, crash_evidence_since_epoch: crashBaselineEpoch }, { deviceSerial: serial }));
     } catch (error) { return toolError(error); }
   });
 
