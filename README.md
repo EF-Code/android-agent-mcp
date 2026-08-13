@@ -1,6 +1,6 @@
-# Android Device MCP (`scrcpy-agent`)
+# Android MCP (`android-mcp`)
 
-Android Device MCP is a local MCP server for controlling an explicitly authorized Android phone over ADB, with a visible server-owned scrcpy mirror. It exposes screenshots, UIAutomator state, semantic interaction, package diagnostics, bounded logcat, evidence recording, and reversible phone controls.
+Android MCP is a local MCP server for controlling an explicitly authorized Android phone over ADB, with a visible server-owned scrcpy mirror. It exposes screenshots, UIAutomator state, semantic interaction, package diagnostics, bounded logcat, evidence recording, and reversible phone controls. scrcpy is the live-view subsystem, not the product's control plane.
 
 The server does not call a language model and does not bypass Android locks, authentication, Play Integrity, DRM, root detection, permission prompts, or enterprise policy.
 
@@ -21,7 +21,7 @@ Physical-device validation is opt-in and remains a separate gate. The full MCP s
 - Linux desktop is the supported initial platform; Manjaro/Arch is the primary tested distribution.
 - Node.js 22 or newer.
 - Android platform-tools (`adb`).
-- `scrcpy` is required by the default visible-mirror workflow; set `ANDROID_DEVICE_MCP_MIRROR_AUTO_START=false` for headless operation.
+- `scrcpy` is required by the default visible-mirror workflow; set `ANDROID_MCP_MIRROR_AUTO_START=false` for headless operation.
 - A phone with Developer Options and USB debugging enabled, with this host’s RSA key accepted.
 
 The server does not install ADB or scrcpy. Verify the host tools without changing system state:
@@ -44,8 +44,8 @@ It never installs packages, changes udev rules, restarts ADB, or uses elevated p
 ## Install from a checkout
 
 ```zsh
-git clone https://github.com/EF-Code/scrcpy-mcp.git
-cd scrcpy-mcp
+git clone https://github.com/EF-Code/android-mcp.git
+cd android-mcp
 npm run install:local
 npm run verify
 ```
@@ -55,13 +55,13 @@ npm run verify
 The executable is then:
 
 ```text
-/absolute/path/to/scrcpy-mcp/dist/index.js
+/absolute/path/to/android-mcp/dist/index.js
 ```
 
 Run it directly over stdio:
 
 ```zsh
-node /absolute/path/to/scrcpy-mcp/dist/index.js
+node /absolute/path/to/android-mcp/dist/index.js
 ```
 
 The process reads MCP messages from stdin and writes MCP messages to stdout. Diagnostics go to stderr.
@@ -80,11 +80,11 @@ The [official OpenAI MCP guidance](https://learn.chatgpt.com/docs/extend/mcp) do
 
 ## Configuration
 
-Configuration is optional. Without a file, the server enables broad non-sensitive phone control and a visible scrcpy mirror. Select a JSON file with `ANDROID_DEVICE_MCP_CONFIG`:
+Configuration is optional. Without a file, the server enables broad non-sensitive phone control and a visible scrcpy mirror. Select a JSON file with `ANDROID_MCP_CONFIG`:
 
 ```zsh
-ANDROID_DEVICE_MCP_CONFIG=/absolute/path/to/android-device-mcp.json \
-  node /absolute/path/to/scrcpy-mcp/dist/index.js
+ANDROID_MCP_CONFIG=/absolute/path/to/android-mcp.json \
+  node /absolute/path/to/android-mcp/dist/index.js
 ```
 
 Example:
@@ -98,7 +98,7 @@ Example:
   "sensitivePackages": ["*.bank.*", "*.wallet.*", "*.password*"],
   "allowedRuntimePermissions": [],
   "allowedApkRoots": ["/home/user/projects"],
-  "evidenceRoot": "/home/user/android-device-mcp-evidence",
+  "evidenceRoot": "/home/user/android-mcp-evidence",
   "maxScreenshotBytes": 25000000,
   "maxApkBytes": 500000000,
   "maxLogBytes": 2000000,
@@ -118,9 +118,9 @@ Example:
 }
 ```
 
-Environment overrides use the `ANDROID_DEVICE_MCP_` prefix. Lists are comma-separated. Configuration never contains a phone PIN, password, account credential, API key, cookie, or authorization token.
+Environment overrides use the `ANDROID_MCP_` prefix. The former `ANDROID_DEVICE_MCP_` variables remain accepted as deprecated compatibility aliases, with canonical variables taking precedence. Lists are comma-separated. Configuration never contains a phone PIN, password, account credential, API key, cookie, or authorization token.
 
-The default `allowedPackages` policy is `*`, so the agent does not require manual app selection. Banking, wallet, and password-style package patterns remain blocked by default; set `ANDROID_DEVICE_MCP_SENSITIVE_PACKAGES=''` only for a deliberately trusted session that needs literal all-app control.
+The default `allowedPackages` policy is `*`, so the agent does not require manual app selection. Banking, wallet, and password-style package patterns remain blocked by default; set `ANDROID_MCP_SENSITIVE_PACKAGES=''` only for a deliberately trusted session that needs literal all-app control.
 
 ## Preferred operating loop
 
@@ -156,9 +156,9 @@ The automated suite uses fake/injectable command boundaries and a child-process 
 Opt-in physical tests are separate:
 
 ```zsh
-export ANDROID_DEVICE_MCP_PHYSICAL=1
-export ANDROID_DEVICE_MCP_TEST_PACKAGE=com.example.androiddevicetest
-export ANDROID_DEVICE_MCP_TEST_SELECTOR='{"text":"7"}'
+export ANDROID_MCP_PHYSICAL=1
+export ANDROID_MCP_TEST_PACKAGE=com.example.androiddevicetest
+export ANDROID_MCP_TEST_SELECTOR='{"text":"7"}'
 npm run test:physical
 ```
 
@@ -183,3 +183,7 @@ Approval-required tools include `app_install`, `app_clear_data`, and `permission
 - No wireless pairing, multiple-device parallel control, OCR, continuous video MCP frames, root features, iOS, or remote listener is provided.
 
 See [SECURITY.md](SECURITY.md) and the documents under [docs/](docs/) for operational details.
+
+## Name compatibility
+
+The npm distribution is `@ef-code/android-mcp`, because the unrelated unscoped `android-mcp` name is already registered. The primary executable is `android-mcp`; `scrcpy-agent` remains as a deprecated executable alias for existing local setups. The MCP server registration name and protocol identity remain `android-device`, so existing Codex MCP configuration does not need to be renamed.

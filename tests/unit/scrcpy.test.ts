@@ -26,7 +26,7 @@ test('maps bounded mirror options to explicit scrcpy flags', () => {
       control: false,
       stayAwake: true,
       turnScreenOff: true,
-      windowTitle: 'Android Device MCP',
+      windowTitle: 'Android MCP',
     },
     {
       version: '4.1',
@@ -46,7 +46,7 @@ test('maps bounded mirror options to explicit scrcpy flags', () => {
     '--max-fps',
     '30',
     '--window-title',
-    'Android Device MCP',
+    'Android MCP',
     '--no-audio',
     '--no-control',
     '--stay-awake',
@@ -169,7 +169,7 @@ test('starts an owned mirror with control enabled when requested', async () => {
     control: true,
     stayAwake: false,
     turnScreenOff: false,
-    windowTitle: 'Android Device MCP',
+    windowTitle: 'Android MCP',
   });
   assert.equal(started.status.running, true);
   assert.equal(started.status.args.includes('--no-control'), false);
@@ -206,7 +206,7 @@ test('restarts an owned mirror when explicit options change', async () => {
     control: true,
     stayAwake: false,
     turnScreenOff: false,
-    windowTitle: 'Android Device MCP',
+    windowTitle: 'Android MCP',
   };
   const first = await manager.start('serial-options', options);
   const firstPid = first.status.pid;

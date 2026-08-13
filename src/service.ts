@@ -183,7 +183,7 @@ export class AndroidDeviceService {
         control: true,
         stayAwake: false,
         turnScreenOff: false,
-        windowTitle: 'Android Device MCP',
+        windowTitle: 'Android MCP',
       });
       this.autoMirrorError = null;
     } catch (error) {
