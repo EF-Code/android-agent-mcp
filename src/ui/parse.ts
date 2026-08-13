@@ -20,11 +20,14 @@ const parser = new XMLParser({
 });
 
 function asRecord(value: unknown): XmlRecord | null {
-  return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as XmlRecord) : null;
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as XmlRecord)
+    : null;
 }
 
 function asNodeArray(value: unknown): XmlRecord[] {
-  if (Array.isArray(value)) return value.flatMap((item) => (asRecord(item) === null ? [] : [asRecord(item)!]));
+  if (Array.isArray(value))
+    return value.flatMap((item) => (asRecord(item) === null ? [] : [asRecord(item)!]));
   const record = asRecord(value);
   return record === null ? [] : [record];
 }
@@ -50,7 +53,9 @@ function parseBounds(value: string | null): Bounds | null {
     bottom: Number(bottom),
   };
   if (
-    !Object.values(parsed).every((coordinate) => Number.isSafeInteger(coordinate) && coordinate >= 0) ||
+    !Object.values(parsed).every(
+      (coordinate) => Number.isSafeInteger(coordinate) && coordinate >= 0,
+    ) ||
     parsed.right <= parsed.left ||
     parsed.bottom <= parsed.top
   ) {
@@ -81,28 +86,39 @@ export function parseUiAutomatorXml(
   xml: string,
   options: {
     snapshotId: string;
+    deviceSerial?: string;
+    deviceSessionId?: string;
     capturedAt: string;
     display: DisplayInfo;
     foreground: ForegroundApp;
   },
 ): UiSnapshot {
   if (xml.length === 0 || xml.length > 50_000_000) {
-    throw new AppError(ErrorCode.UiHierarchyIncomplete, 'UIAutomator XML is empty or exceeds the safety limit.', {
-      details: { bytes: Buffer.byteLength(xml), maximumBytes: 50_000_000 },
-    });
+    throw new AppError(
+      ErrorCode.UiHierarchyIncomplete,
+      'UIAutomator XML is empty or exceeds the safety limit.',
+      {
+        details: { bytes: Buffer.byteLength(xml), maximumBytes: 50_000_000 },
+      },
+    );
   }
 
   let parsed: unknown;
   try {
     parsed = parser.parse(xml);
   } catch (error) {
-    throw new AppError(ErrorCode.UiHierarchyIncomplete, 'UIAutomator XML could not be parsed.', { cause: error });
+    throw new AppError(ErrorCode.UiHierarchyIncomplete, 'UIAutomator XML could not be parsed.', {
+      cause: error,
+    });
   }
 
   const root = asRecord(parsed);
   const hierarchy = root === null ? null : asRecord(root.hierarchy);
   if (hierarchy === null) {
-    throw new AppError(ErrorCode.UiHierarchyIncomplete, 'UIAutomator XML did not contain a hierarchy root.');
+    throw new AppError(
+      ErrorCode.UiHierarchyIncomplete,
+      'UIAutomator XML did not contain a hierarchy root.',
+    );
   }
 
   const nodes: UiNode[] = [];
@@ -136,7 +152,13 @@ export function parseUiAutomatorXml(
       resourceId,
       flags: nodeFlags,
       bounds,
-      center: bounds === null ? null : { x: Math.floor((bounds.left + bounds.right) / 2), y: Math.floor((bounds.top + bounds.bottom) / 2) },
+      center:
+        bounds === null
+          ? null
+          : {
+              x: Math.floor((bounds.left + bounds.right) / 2),
+              y: Math.floor((bounds.top + bounds.bottom) / 2),
+            },
       parentId,
       childIds,
     };
@@ -149,10 +171,14 @@ export function parseUiAutomatorXml(
       });
     }
 
-    if (className !== null && /(?:WebView|SurfaceView|TextureView|ComposeView|GLSurfaceView|Canvas)/u.test(className)) {
+    if (
+      className !== null &&
+      /(?:WebView|SurfaceView|TextureView|ComposeView|GLSurfaceView|Canvas)/u.test(className)
+    ) {
       addWarning(warnings, {
         code: 'NON_SEMANTIC_SURFACE',
-        message: 'The hierarchy contains a web, video, graphics, or custom-rendered surface that may be incomplete.',
+        message:
+          'The hierarchy contains a web, video, graphics, or custom-rendered surface that may be incomplete.',
         details: { className },
       });
     }
@@ -172,12 +198,15 @@ export function parseUiAutomatorXml(
   if (nodes.length === 0) {
     addWarning(warnings, {
       code: 'EMPTY_HIERARCHY',
-      message: 'UIAutomator returned no nodes; custom canvases and protected surfaces may be invisible to this API.',
+      message:
+        'UIAutomator returned no nodes; custom canvases and protected surfaces may be invisible to this API.',
     });
   }
 
   return {
     snapshotId: options.snapshotId,
+    ...(options.deviceSerial === undefined ? {} : { deviceSerial: options.deviceSerial }),
+    ...(options.deviceSessionId === undefined ? {} : { deviceSessionId: options.deviceSessionId }),
     capturedAt: options.capturedAt,
     display: options.display,
     foreground: options.foreground,

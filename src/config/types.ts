@@ -13,6 +13,7 @@ export interface ServerConfig {
   autoSelectSingleDevice: boolean;
   allowedPackages: string[];
   sensitivePackages: string[];
+  allowedRuntimePermissions: string[];
   allowedApkRoots: string[];
   evidenceRoot: string;
   maxScreenshotBytes: number;
@@ -21,9 +22,9 @@ export interface ServerConfig {
   maxCommandOutputBytes: number;
   maxEvidenceBytes: number;
   maxEvidenceFiles: number;
+  evidenceRetentionMaxAgeMs: number;
   defaultTimeoutMs: number;
   uiSnapshotMaxAgeMs: number;
   approvalMode: ApprovalMode;
-  leaveScrcpyRunningOnExit: boolean;
   mirror: MirrorConfig;
 }

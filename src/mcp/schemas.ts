@@ -56,8 +56,10 @@ export const uiFindSchema = {
 export const uiTapSchema = {
   selector: selectorSchema.optional(),
   node_id: z.string().min(1).max(128).optional(),
+  snapshot_id: z.string().min(1).max(128).optional(),
   match_index: z.number().int().min(0).max(100).optional(),
   verify_change: z.boolean().optional(),
+  verify_pixels: z.boolean().optional(),
 };
 
 export const coordinateSchema = {
@@ -65,6 +67,7 @@ export const coordinateSchema = {
   y: z.number().int().min(0).max(100_000),
   coordinate_space: z.literal('device_pixels').optional(),
   verify_change: z.boolean().optional(),
+  verify_pixels: z.boolean().optional(),
 };
 
 export const swipeSchema = {
@@ -75,11 +78,26 @@ export const swipeSchema = {
   direction: z.enum(['up', 'down', 'left', 'right']).optional(),
   duration_ms: z.number().int().min(0).max(30_000).optional(),
   verify_change: z.boolean().optional(),
+  verify_pixels: z.boolean().optional(),
 };
 
 export const keyPressSchema = {
-  key: z.enum(['back', 'home', 'enter', 'tab', 'escape', 'delete', 'arrow_up', 'arrow_down', 'arrow_left', 'arrow_right', 'menu', 'app_switch', 'volume_up', 'volume_down', 'wake', 'power']),
-  allow_power: z.boolean().optional(),
+  key: z.enum([
+    'back',
+    'home',
+    'enter',
+    'tab',
+    'escape',
+    'delete',
+    'arrow_up',
+    'arrow_down',
+    'arrow_left',
+    'arrow_right',
+    'menu',
+    'app_switch',
+    'volume_up',
+    'volume_down',
+  ]),
   verify_change: z.boolean().optional(),
 };
 
@@ -102,19 +120,16 @@ export const appListSchema = {
 export const installSchema = {
   path: z.string().min(1),
   replace: z.boolean().optional(),
-  approved: z.boolean().optional(),
 };
 
 export const clearDataSchema = {
   package_name: z.string().min(1).max(255),
-  approved: z.boolean().optional(),
 };
 
 export const permissionSetSchema = {
   package_name: z.string().min(1).max(255),
   permission: z.string().min(1).max(255),
   action: z.enum(['grant', 'revoke']),
-  approved: z.boolean().optional(),
 };
 
 export const logCaptureSchema = {

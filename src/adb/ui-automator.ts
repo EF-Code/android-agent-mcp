@@ -17,10 +17,12 @@ export class AdbUiAutomator {
       });
       return output.stdout.toString('utf8');
     } finally {
-      await this.adb.shell(serial, ['rm', '-f', REMOTE_DUMP_PATH], {
-        timeoutMs: 5_000,
-        maxOutputBytes: 8_192,
-      }).catch(() => undefined);
+      await this.adb
+        .shell(serial, ['rm', '-f', REMOTE_DUMP_PATH], {
+          timeoutMs: 5_000,
+          maxOutputBytes: 8_192,
+        })
+        .catch(() => undefined);
     }
   }
 }

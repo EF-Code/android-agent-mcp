@@ -12,12 +12,16 @@ export interface DeviceSession {
   selectedAt: string;
 }
 
-export function parseAdbDevices(output: string, selectedSerial: string | null = null): DeviceSummary[] {
+export function parseAdbDevices(
+  output: string,
+  selectedSerial: string | null = null,
+): DeviceSummary[] {
   const devices: DeviceSummary[] = [];
   for (const rawLine of output.replace(/\r\n/g, '\n').split('\n')) {
     const line = rawLine.trim();
     if (line.length === 0 || line === 'List of devices attached') continue;
-    const match = /^(\S+)\s+(device|unauthorized|offline|no permissions|unknown)(?:\s+(.*))?$/u.exec(line);
+    const match =
+      /^(\S+)\s+(device|unauthorized|offline|no permissions|unknown)(?:\s+(.*))?$/u.exec(line);
     if (match === null) continue;
     const [, serial, stateValue, attributeText] = match;
     if (serial === undefined || stateValue === undefined) continue;
@@ -29,7 +33,10 @@ export function parseAdbDevices(output: string, selectedSerial: string | null = 
     }
 
     const state: DeviceSummary['state'] =
-      stateValue === 'device' || stateValue === 'unauthorized' || stateValue === 'offline' || stateValue === 'no permissions'
+      stateValue === 'device' ||
+      stateValue === 'unauthorized' ||
+      stateValue === 'offline' ||
+      stateValue === 'no permissions'
         ? stateValue
         : 'unknown';
     devices.push({
@@ -54,6 +61,7 @@ export class DeviceManager {
   private selectedSerial: string | null = null;
   private session: DeviceSession | null = null;
   private wasConnected = false;
+  private requiresReselection = false;
 
   constructor(
     private readonly adb: AdbClient,
@@ -64,14 +72,23 @@ export class DeviceManager {
   async list(): Promise<DeviceSummary[]> {
     const output = await this.adb.text(this.adb.host(['devices', '-l']));
     let devices = parseAdbDevices(output, this.selectedSerial);
-    const selected = this.selectedSerial === null ? null : devices.find((device) => device.serial === this.selectedSerial);
+    const selected =
+      this.selectedSerial === null
+        ? null
+        : devices.find((device) => device.serial === this.selectedSerial);
 
     if (this.selectedSerial !== null && selected === undefined) {
-      if (this.wasConnected) this.onDisconnect(this.selectedSerial);
+      if (this.wasConnected) {
+        this.requiresReselection = true;
+        this.onDisconnect(this.selectedSerial);
+      }
       this.wasConnected = false;
       devices = devices.map((device) => ({ ...device, selected: false }));
     } else if (selected !== undefined && selected !== null) {
-      if (this.wasConnected && !selected.authorized) this.onDisconnect(selected.serial);
+      if (this.wasConnected && !selected.authorized) {
+        this.requiresReselection = true;
+        this.onDisconnect(selected.serial);
+      }
       this.wasConnected = selected.authorized;
     }
 
@@ -79,10 +96,21 @@ export class DeviceManager {
       const authorized = devices.filter((device) => device.authorized);
       if (authorized.length === 1) {
         this.selectedSerial = authorized[0]!.serial;
-        this.session = { sessionId: randomUUID(), serial: this.selectedSerial, selectedAt: new Date().toISOString() };
-        devices = devices.map((device) => ({ ...device, selected: device.serial === this.selectedSerial }));
+        this.session = {
+          sessionId: randomUUID(),
+          serial: this.selectedSerial,
+          selectedAt: new Date().toISOString(),
+        };
+        devices = devices.map((device) => ({
+          ...device,
+          selected: device.serial === this.selectedSerial,
+        }));
         this.wasConnected = true;
       }
+    }
+
+    if (this.requiresReselection) {
+      devices = devices.map((device) => ({ ...device, selected: false }));
     }
 
     return devices;
@@ -93,55 +121,94 @@ export class DeviceManager {
     const devices = await this.list();
     const device = devices.find((candidate) => candidate.serial === serial);
     if (device === undefined) {
-      throw new AppError(ErrorCode.DeviceNotFound, 'The requested serial was not present in the current ADB device list.', {
-        retryable: true,
-        details: { serial },
-      });
+      throw new AppError(
+        ErrorCode.DeviceNotFound,
+        'The requested serial was not present in the current ADB device list.',
+        {
+          retryable: true,
+          details: { serial },
+        },
+      );
     }
     if (device.state === 'unauthorized') {
-      throw new AppError(ErrorCode.DeviceUnauthorized, 'Accept the USB debugging authorization prompt on the phone.', {
-        retryable: true,
-        details: { serial },
-      });
+      throw new AppError(
+        ErrorCode.DeviceUnauthorized,
+        'Accept the USB debugging authorization prompt on the phone.',
+        {
+          retryable: true,
+          details: { serial },
+        },
+      );
     }
     if (device.state === 'offline') {
-      throw new AppError(ErrorCode.DeviceOffline, 'The selected device is offline; reconnect it before control actions.', {
-        retryable: true,
-        details: { serial },
-      });
+      throw new AppError(
+        ErrorCode.DeviceOffline,
+        'The selected device is offline; reconnect it before control actions.',
+        {
+          retryable: true,
+          details: { serial },
+        },
+      );
     }
     if (device.state !== 'device') {
-      throw new AppError(ErrorCode.DeviceNotFound, 'The selected serial is not currently usable by ADB.', {
-        retryable: true,
-        details: { serial, state: device.state },
-      });
+      throw new AppError(
+        ErrorCode.DeviceNotFound,
+        'The selected serial is not currently usable by ADB.',
+        {
+          retryable: true,
+          details: { serial, state: device.state },
+        },
+      );
     }
 
     this.selectedSerial = serial;
     this.session = { sessionId: randomUUID(), serial, selectedAt: new Date().toISOString() };
+    this.requiresReselection = false;
     this.wasConnected = true;
     return { device: { ...device, selected: true }, session: this.session };
   }
 
   async requireSelected(): Promise<DeviceSession> {
     if (this.session === null || this.selectedSerial === null) {
-      throw new AppError(ErrorCode.NoDeviceSelected, 'Select one authorized Android device before using control tools.', {
-        retryable: true,
-      });
+      throw new AppError(
+        ErrorCode.NoDeviceSelected,
+        'Select one authorized Android device before using control tools.',
+        {
+          retryable: true,
+        },
+      );
+    }
+    if (this.requiresReselection) {
+      throw new AppError(
+        ErrorCode.DeviceDisconnected,
+        'The selected device was disconnected; select it again before resuming control.',
+        {
+          retryable: true,
+          details: { serial: this.selectedSerial, sessionId: this.session.sessionId },
+        },
+      );
     }
     const devices = await this.list();
     const selected = devices.find((device) => device.serial === this.selectedSerial);
     if (selected === undefined) {
-      throw new AppError(ErrorCode.DeviceDisconnected, 'The selected device is no longer connected.', {
-        retryable: true,
-        details: { serial: this.selectedSerial, sessionId: this.session.sessionId },
-      });
+      throw new AppError(
+        ErrorCode.DeviceDisconnected,
+        'The selected device is no longer connected.',
+        {
+          retryable: true,
+          details: { serial: this.selectedSerial, sessionId: this.session.sessionId },
+        },
+      );
     }
     if (!selected.authorized) {
-      throw new AppError(ErrorCode.DeviceUnauthorized, 'The selected device is no longer authorized.', {
-        retryable: true,
-        details: { serial: this.selectedSerial, state: selected.state },
-      });
+      throw new AppError(
+        ErrorCode.DeviceUnauthorized,
+        'The selected device is no longer authorized.',
+        {
+          retryable: true,
+          details: { serial: this.selectedSerial, state: selected.state },
+        },
+      );
     }
     return this.session;
   }

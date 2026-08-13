@@ -43,5 +43,7 @@ export function asAppError(error: unknown): AppError {
     return new AppError('INTERNAL_ERROR', error.message, { cause: error });
   }
 
-  return new AppError('INTERNAL_ERROR', 'An unknown error occurred.', { details: { value: error } });
+  return new AppError('INTERNAL_ERROR', 'An unknown error occurred.', {
+    details: { value: error },
+  });
 }

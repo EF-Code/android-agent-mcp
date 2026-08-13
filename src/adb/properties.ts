@@ -47,7 +47,14 @@ export class AdbProperties {
   async read(serial: string): Promise<DeviceProperties> {
     const values = new Map<string, string | null>();
     for (const property of PROPERTY_NAMES) {
-      values.set(property, nonEmpty(await this.adb.text(this.adb.shell(serial, ['getprop', property], { maxOutputBytes: 4_096 }))));
+      values.set(
+        property,
+        nonEmpty(
+          await this.adb.text(
+            this.adb.shell(serial, ['getprop', property], { maxOutputBytes: 4_096 }),
+          ),
+        ),
+      );
     }
 
     return {
@@ -57,13 +64,22 @@ export class AdbProperties {
       device: values.get('ro.product.device') ?? null,
       androidVersion: values.get('ro.build.version.release') ?? null,
       apiLevel: numberOrNull(values.get('ro.build.version.sdk') ?? null),
-      abiList: (values.get('ro.product.cpu.abilist') ?? '').split(',').map((value) => value.trim()).filter(Boolean),
+      abiList: (values.get('ro.product.cpu.abilist') ?? '')
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean),
     };
   }
 
-  async display(serial: string): Promise<{ resolution: { width: number; height: number } | null; density: number | null }> {
-    const size = await this.adb.text(this.adb.shell(serial, ['wm', 'size'], { maxOutputBytes: 8_192 }));
-    const densityOutput = await this.adb.text(this.adb.shell(serial, ['wm', 'density'], { maxOutputBytes: 8_192 }));
+  async display(
+    serial: string,
+  ): Promise<{ resolution: { width: number; height: number } | null; density: number | null }> {
+    const size = await this.adb.text(
+      this.adb.shell(serial, ['wm', 'size'], { maxOutputBytes: 8_192 }),
+    );
+    const densityOutput = await this.adb.text(
+      this.adb.shell(serial, ['wm', 'density'], { maxOutputBytes: 8_192 }),
+    );
     const densityMatch = /(?:Physical|Override) density:\s*(\d+)/u.exec(densityOutput);
     const density = densityMatch === null ? null : Number(densityMatch[1]);
     return {
@@ -73,14 +89,25 @@ export class AdbProperties {
   }
 
   async rotation(serial: string): Promise<0 | 1 | 2 | 3> {
-    const output = await this.adb.text(this.adb.shell(serial, ['dumpsys', 'input'], { timeoutMs: 10_000, maxOutputBytes: 64_000 }));
-    const match = /(?:SurfaceOrientation|mSurfaceOrientation|mRotation)\s*[:=]\s*(\d+)/u.exec(output);
+    const output = await this.adb.text(
+      this.adb.shell(serial, ['dumpsys', 'input'], { timeoutMs: 10_000, maxOutputBytes: 64_000 }),
+    );
+    const match = /(?:SurfaceOrientation|mSurfaceOrientation|mRotation)\s*[:=]\s*(\d+)/u.exec(
+      output,
+    );
     const rotation = match === null ? 0 : Number(match[1]);
     return rotation === 1 || rotation === 2 || rotation === 3 ? rotation : 0;
   }
 
-  async battery(serial: string): Promise<{ level: number | null; status: string | null; plugged: string | null; temperatureC: number | null }> {
-    const output = await this.adb.text(this.adb.shell(serial, ['dumpsys', 'battery'], { maxOutputBytes: 32_000 }));
+  async battery(serial: string): Promise<{
+    level: number | null;
+    status: string | null;
+    plugged: string | null;
+    temperatureC: number | null;
+  }> {
+    const output = await this.adb.text(
+      this.adb.shell(serial, ['dumpsys', 'battery'], { maxOutputBytes: 32_000 }),
+    );
     const value = (name: string): string | null => {
       const match = new RegExp(`^\\s*${name}:\\s*(.+)$`, 'mu').exec(output);
       return match?.[1]?.trim() ?? null;
@@ -90,15 +117,26 @@ export class AdbProperties {
     return {
       level: level === null ? null : Math.min(level, 100),
       status: value('status'),
-      plugged: value('AC powered') === 'true' ? 'AC' : value('USB powered') === 'true' ? 'USB' : value('Wireless powered') === 'true' ? 'WIRELESS' : null,
+      plugged:
+        value('AC powered') === 'true'
+          ? 'AC'
+          : value('USB powered') === 'true'
+            ? 'USB'
+            : value('Wireless powered') === 'true'
+              ? 'WIRELESS'
+              : null,
       temperatureC: rawTemperature === null ? null : rawTemperature / 10,
     };
   }
 
   async lockState(serial: string): Promise<'locked' | 'unlocked' | 'unknown'> {
-    const output = await this.adb.text(this.adb.shell(serial, ['dumpsys', 'window'], { maxOutputBytes: 128_000 }));
-    if (/mShowingLockscreen=true|mDreamingLockscreen=true|mInputRestricted=true/u.test(output)) return 'locked';
-    if (/mShowingLockscreen=false|mDreamingLockscreen=false|mInputRestricted=false/u.test(output)) return 'unlocked';
+    const output = await this.adb.text(
+      this.adb.shell(serial, ['dumpsys', 'window'], { maxOutputBytes: 128_000 }),
+    );
+    if (/mShowingLockscreen=true|mDreamingLockscreen=true|mInputRestricted=true/u.test(output))
+      return 'locked';
+    if (/mShowingLockscreen=false|mDreamingLockscreen=false|mInputRestricted=false/u.test(output))
+      return 'unlocked';
     return 'unknown';
   }
 }

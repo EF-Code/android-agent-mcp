@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { parsePngDimensions } from '../../src/adb/screenshots.js';
+import { AdbScreenshots } from '../../src/adb/screenshots.js';
+import { AdbClient } from '../../src/adb/client.js';
+import { ErrorCode } from '../../src/errors/codes.js';
+import { AppError } from '../../src/errors/app-error.js';
 
 function png(width: number, height: number): Buffer {
   const buffer = Buffer.alloc(24);
@@ -19,4 +23,27 @@ test('reads native PNG dimensions', () => {
 test('rejects invalid PNG signatures and dimensions', () => {
   assert.throws(() => parsePngDimensions(Buffer.from('not-a-png')));
   assert.throws(() => parsePngDimensions(png(0, 100)));
+});
+
+test('normalizes bounded screenshot output overflow', async () => {
+  const adb = new AdbClient({
+    adbPath: 'fake-adb',
+    defaultTimeoutMs: 5_000,
+    maxOutputBytes: 16_000,
+    runner: {
+      run: async () => {
+        throw new AppError(ErrorCode.CommandOutputLimit, 'bounded output exceeded', {
+          details: { command: { stdoutBytes: 2_049, stdoutTruncated: true } },
+        });
+      },
+    },
+  });
+  const screenshots = new AdbScreenshots(adb, 2_048);
+  await assert.rejects(
+    () => screenshots.capture('serial-1'),
+    (error: unknown) =>
+      error instanceof AppError &&
+      error.code === ErrorCode.ScreenshotTooLarge &&
+      error.details.observedBytes === 2_049,
+  );
 });

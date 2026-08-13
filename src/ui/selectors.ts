@@ -3,7 +3,12 @@ import { AppError } from '../errors/app-error.js';
 import { compileBoundedRegex, validateSelector } from '../validation/selectors.js';
 import type { UiMatch, UiNode, UiSelector, UiSnapshot } from './types.js';
 
-function compareText(actual: string | null, expected: string, mode: UiSelector['textMode'], caseSensitive: boolean): boolean {
+function compareText(
+  actual: string | null,
+  expected: string,
+  mode: UiSelector['textMode'],
+  caseSensitive: boolean,
+): boolean {
   if (actual === null) return false;
   const left = caseSensitive ? actual : actual.toLocaleLowerCase();
   const right = caseSensitive ? expected : expected.toLocaleLowerCase();
@@ -13,11 +18,16 @@ function compareText(actual: string | null, expected: string, mode: UiSelector['
     case 'contains':
       return left.includes(right);
     case 'regex':
-      return compileBoundedRegex(caseSensitive ? expected : expected.toLocaleLowerCase()).test(left);
+      return compileBoundedRegex(caseSensitive ? expected : expected.toLocaleLowerCase()).test(
+        left,
+      );
   }
 }
 
-function matchesNode(node: UiNode, selector: UiSelector): { matched: boolean; score: number; reasons: string[] } {
+function matchesNode(
+  node: UiNode,
+  selector: UiSelector,
+): { matched: boolean; score: number; reasons: string[] } {
   let score = 0;
   const reasons: string[] = [];
   const stringChecks: Array<{
@@ -130,14 +140,23 @@ export function findMatches(snapshot: UiSnapshot, selector: UiSelector): UiMatch
     .flatMap((node) => {
       const result = matchesNode(node, selector);
       if (!result.matched) return [];
-      if (selector.ancestor !== undefined && !hasAncestor(snapshot, node, selector.ancestor)) return [];
-      if (selector.descendant !== undefined && !hasDescendant(snapshot, node, selector.descendant)) return [];
+      if (selector.ancestor !== undefined && !hasAncestor(snapshot, node, selector.ancestor))
+        return [];
+      if (selector.descendant !== undefined && !hasDescendant(snapshot, node, selector.descendant))
+        return [];
       return [{ node, score: result.score, reasons: result.reasons }];
     })
-    .sort((left, right) => right.score - left.score || left.node.nodeId.localeCompare(right.node.nodeId));
+    .sort(
+      (left, right) =>
+        right.score - left.score || left.node.nodeId.localeCompare(right.node.nodeId),
+    );
 }
 
-export function resolveUniqueMatch(snapshot: UiSnapshot, selector: UiSelector, matchIndex?: number): UiMatch {
+export function resolveUniqueMatch(
+  snapshot: UiSnapshot,
+  selector: UiSelector,
+  matchIndex?: number,
+): UiMatch {
   const matches = findMatches(snapshot, selector);
   if (matches.length === 0) {
     throw new AppError(ErrorCode.UiElementNotFound, 'No UI element matched the selector.', {
@@ -147,9 +166,13 @@ export function resolveUniqueMatch(snapshot: UiSnapshot, selector: UiSelector, m
 
   if (matchIndex !== undefined) {
     if (!Number.isInteger(matchIndex) || matchIndex < 0 || matchIndex >= matches.length) {
-      throw new AppError(ErrorCode.InvalidInput, 'matchIndex is outside the available match list.', {
-        details: { matchCount: matches.length, matchIndex },
-      });
+      throw new AppError(
+        ErrorCode.InvalidInput,
+        'matchIndex is outside the available match list.',
+        {
+          details: { matchCount: matches.length, matchIndex },
+        },
+      );
     }
     return matches[matchIndex]!;
   }
@@ -157,17 +180,21 @@ export function resolveUniqueMatch(snapshot: UiSnapshot, selector: UiSelector, m
   const bestScore = matches[0]!.score;
   const strongest = matches.filter((match) => match.score === bestScore);
   if (strongest.length !== 1) {
-    throw new AppError(ErrorCode.UiElementAmbiguous, 'The selector matched multiple equally strong UI elements.', {
-      retryable: true,
-      details: {
-        matches: strongest.map((match) => ({
-          nodeId: match.node.nodeId,
-          bounds: match.node.bounds,
-          score: match.score,
-          reasons: match.reasons,
-        })),
+    throw new AppError(
+      ErrorCode.UiElementAmbiguous,
+      'The selector matched multiple equally strong UI elements.',
+      {
+        retryable: true,
+        details: {
+          matches: strongest.map((match) => ({
+            nodeId: match.node.nodeId,
+            bounds: match.node.bounds,
+            score: match.score,
+            reasons: match.reasons,
+          })),
+        },
       },
-    });
+    );
   }
 
   return strongest[0]!;

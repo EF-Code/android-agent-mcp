@@ -16,6 +16,7 @@ export interface LogCaptureOptions {
   maxLines?: number;
   maxBytes?: number;
   includeCrashBuffer?: boolean;
+  signal?: AbortSignal;
 }
 
 export interface LogCapture {
@@ -42,7 +43,11 @@ function validateTags(tags: string[]): string[] {
   return tags;
 }
 
-function splitLines(text: string, maxLines: number, maxBytes: number): { lines: string[]; truncated: boolean } {
+function splitLines(
+  text: string,
+  maxLines: number,
+  maxBytes: number,
+): { lines: string[]; truncated: boolean } {
   const lines: string[] = [];
   let bytes = 0;
   let truncated = false;
@@ -61,16 +66,19 @@ function splitLines(text: string, maxLines: number, maxBytes: number): { lines: 
 
 function parseCrashBlocks(text: string): CrashEvidence[] {
   const redacted = redactLogText(text);
-  const blocks = redacted.split(/(?=FATAL EXCEPTION|ANR in )/u).filter((block) => /FATAL EXCEPTION|ANR in /u.test(block));
+  const blocks = redacted
+    .split(/(?=FATAL EXCEPTION|ANR in )/u)
+    .filter((block) => /FATAL EXCEPTION|ANR in /u.test(block));
   return blocks.map((block) => {
     const process = /Process:\s*([^,\s]+),\s*PID:\s*(\d+)/u.exec(block);
-    const exception = /^\s*([A-Za-z_$][\w.$]*(?:Exception|Error|Failure|Throwable))(?::\s*(.*))?$/mu.exec(block);
+    const exception =
+      /^\s*([A-Za-z_$][\w.$]*(?:Exception|Error|Failure|Throwable))(?::\s*(.*))?$/mu.exec(block);
     const frames = block
       .split(/\r?\n/u)
       .filter((line) => /^\s*at\s+/u.test(line))
       .slice(0, 50);
     return {
-      processPackage: process?.[1] ?? (/ANR in\s+([^\s{]+)/u.exec(block)?.[1] ?? null),
+      processPackage: process?.[1] ?? /ANR in\s+([^\s{]+)/u.exec(block)?.[1] ?? null,
       pid: process?.[2] === undefined ? null : Number(process[2]),
       exceptionType: exception?.[1] ?? (block.startsWith('ANR') ? 'ANR' : null),
       message: exception?.[2]?.trim() ?? null,
@@ -82,11 +90,16 @@ function parseCrashBlocks(text: string): CrashEvidence[] {
 }
 
 export class AdbLogcat {
-  constructor(private readonly adb: AdbClient, private readonly defaultMaxBytes: number) {}
+  constructor(
+    private readonly adb: AdbClient,
+    private readonly defaultMaxBytes: number,
+  ) {}
 
   private async pidForPackage(serial: string, packageName: string): Promise<number | null> {
     validatePackageName(packageName);
-    const output = await this.adb.text(this.adb.shell(serial, ['pidof', packageName], { timeoutMs: 5_000, maxOutputBytes: 4_096 }));
+    const output = await this.adb.text(
+      this.adb.shell(serial, ['pidof', packageName], { timeoutMs: 5_000, maxOutputBytes: 4_096 }),
+    );
     const pid = Number(output.trim().split(/\s+/u)[0]);
     return Number.isSafeInteger(pid) && pid > 0 ? pid : null;
   }
@@ -94,20 +107,38 @@ export class AdbLogcat {
   async capture(serial: string, options: LogCaptureOptions = {}): Promise<LogCapture> {
     const durationMs = validateDuration(options.durationMs ?? 1_000, 'durationMs', 30_000);
     const maxLines = Math.min(Math.max(options.maxLines ?? 500, 1), 20_000);
-    const maxBytes = Math.min(Math.max(options.maxBytes ?? this.defaultMaxBytes, 1_024), this.defaultMaxBytes);
+    const maxBytes = Math.min(
+      Math.max(options.maxBytes ?? this.defaultMaxBytes, 1_024),
+      this.defaultMaxBytes,
+    );
     const severity = options.severity ?? 'I';
-    if (!/^[VDIWEF]$/u.test(severity)) throw new AppError(ErrorCode.InvalidInput, 'Unsupported log severity.');
+    if (!/^[VDIWEF]$/u.test(severity))
+      throw new AppError(ErrorCode.InvalidInput, 'Unsupported log severity.');
     const tags = validateTags(options.tags ?? []);
-    const pid = options.pid ?? (options.packageName === undefined ? undefined : await this.pidForPackage(serial, options.packageName));
-    if (pid !== undefined && pid !== null && (!Number.isSafeInteger(pid) || pid <= 0)) throw new AppError(ErrorCode.InvalidInput, 'PID is invalid.');
+    const pid =
+      options.pid ??
+      (options.packageName === undefined
+        ? undefined
+        : await this.pidForPackage(serial, options.packageName));
+    if (pid !== undefined && pid !== null && (!Number.isSafeInteger(pid) || pid <= 0))
+      throw new AppError(ErrorCode.InvalidInput, 'PID is invalid.');
     if (options.packageName !== undefined && pid === null) {
       return { lines: [], text: '', truncated: false, durationMs: 0 };
     }
-    if (options.since !== undefined && !/^\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?$/u.test(options.since)) {
-      throw new AppError(ErrorCode.InvalidInput, 'Logcat since timestamp must use logcat timestamp format.');
+    if (
+      options.since !== undefined &&
+      !/^\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?$/u.test(options.since)
+    ) {
+      throw new AppError(
+        ErrorCode.InvalidInput,
+        'Logcat since timestamp must use logcat timestamp format.',
+      );
     }
 
-    const args = ['logcat', '-d', '-v', 'threadtime', '-T', options.since ?? '1'];
+    const args =
+      options.since === undefined
+        ? ['logcat', '-v', 'threadtime']
+        : ['logcat', '-d', '-v', 'threadtime', '-T', options.since];
     if (pid !== undefined && pid !== null) args.push(`--pid=${pid}`);
     args.push('*:' + severity);
     for (const tag of tags) args.push(`${tag}:${severity}`);
@@ -115,16 +146,27 @@ export class AdbLogcat {
     const output = await this.adb.device(serial, args, {
       timeoutMs: Math.max(durationMs + 2_000, 5_000),
       maxOutputBytes: maxBytes,
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+      ...(options.since === undefined ? { captureDurationMs: durationMs } : {}),
     });
     const primary = splitLines(output.stdout.toString('utf8'), maxLines, maxBytes);
     let lines = primary.lines;
     let truncated = primary.truncated || output.record.stdoutTruncated;
     if (options.includeCrashBuffer === true) {
-      const crash = await this.adb.device(serial, ['logcat', '-d', '-b', 'crash', '-v', 'threadtime', '-t', String(Math.min(maxLines, 500))], {
-        timeoutMs: 10_000,
-        maxOutputBytes: Math.min(maxBytes, 500_000),
-      });
-      const crashLines = splitLines(crash.stdout.toString('utf8'), maxLines - lines.length, maxBytes - Buffer.byteLength(lines.join('\n')));
+      const crash = await this.adb.device(
+        serial,
+        ['logcat', '-d', '-b', 'crash', '-v', 'threadtime', '-t', String(Math.min(maxLines, 500))],
+        {
+          timeoutMs: 10_000,
+          maxOutputBytes: Math.min(maxBytes, 500_000),
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
+        },
+      );
+      const crashLines = splitLines(
+        crash.stdout.toString('utf8'),
+        maxLines - lines.length,
+        maxBytes - Buffer.byteLength(lines.join('\n')),
+      );
       lines = [...lines, ...crashLines.lines];
       truncated ||= crashLines.truncated || crash.record.stdoutTruncated;
     }
@@ -136,13 +178,51 @@ export class AdbLogcat {
     };
   }
 
-  async crashes(serial: string, packageName: string, maxLines = 500): Promise<CrashEvidence[]> {
+  async latestCrashEpoch(serial: string): Promise<number> {
+    const output = await this.adb.device(
+      serial,
+      ['logcat', '-d', '-b', 'crash', '-v', 'epoch', '-t', '1'],
+      {
+        timeoutMs: 10_000,
+        maxOutputBytes: 16_000,
+      },
+    );
+    const timestamps = [...output.stdout.toString('utf8').matchAll(/^\s*(\d+\.\d+)/gmu)].map(
+      (match) => Number(match[1]),
+    );
+    const latest = timestamps.filter((value) => Number.isFinite(value)).at(-1);
+    return latest ?? Date.now() / 1_000;
+  }
+
+  async crashes(
+    serial: string,
+    packageName: string,
+    maxLines = 500,
+    sinceEpoch?: number,
+  ): Promise<CrashEvidence[]> {
     validatePackageName(packageName);
-    const output = await this.adb.device(serial, ['logcat', '-d', '-b', 'crash', '-v', 'threadtime', '-t', String(Math.min(maxLines, 2_000))], {
+    const args = [
+      'logcat',
+      '-d',
+      '-b',
+      'crash',
+      '-v',
+      'threadtime',
+      '-t',
+      String(Math.min(maxLines, 2_000)),
+    ];
+    if (sinceEpoch !== undefined) {
+      if (!Number.isFinite(sinceEpoch) || sinceEpoch < 0)
+        throw new AppError(ErrorCode.InvalidInput, 'Crash baseline timestamp is invalid.');
+      args.push('-T', String(sinceEpoch));
+    }
+    const output = await this.adb.device(serial, args, {
       timeoutMs: 15_000,
       maxOutputBytes: Math.min(this.defaultMaxBytes, 2_000_000),
     });
-    return parseCrashBlocks(redactLogText(output.stdout.toString('utf8'))).filter((crash) => crash.processPackage === packageName || crash.processPackage === null);
+    return parseCrashBlocks(redactLogText(output.stdout.toString('utf8'))).filter(
+      (crash) => crash.processPackage === packageName,
+    );
   }
 }
 

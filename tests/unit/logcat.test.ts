@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { AdbClient } from '../../src/adb/client.js';
+import { AdbLogcat } from '../../src/adb/logcat.js';
 import { parseCrashBlocks } from '../../src/adb/logcat.js';
 import { normalizeInstallFailure } from '../../src/adb/installer.js';
 import { redactLogText } from '../../src/policy/redaction.js';
@@ -24,4 +26,40 @@ java.lang.IllegalStateException: token=secret-value
   assert.equal(crash[0]?.pid, 4321);
   assert.equal(crash[0]?.exceptionType, 'java.lang.IllegalStateException');
   assert.ok(!redactLogText('password=secret-value').includes('secret-value'));
+});
+
+test('returns crash evidence only when package attribution is exact', async () => {
+  const runner = {
+    run: async () => ({
+      stdout: Buffer.from(`FATAL EXCEPTION: main
+Process: com.example.app, PID: 4321
+java.lang.IllegalStateException: target
+
+FATAL EXCEPTION: main
+Process: com.other.app, PID: 9876
+java.lang.IllegalStateException: unrelated
+
+ANR in unknown.process
+`),
+      stderr: Buffer.alloc(0),
+      record: {
+        executable: 'adb',
+        args: [],
+        exitCode: 0,
+        signal: null,
+        durationMs: 1,
+        stdoutBytes: 0,
+        stderrBytes: 0,
+        stdoutTruncated: false,
+        stderrTruncated: false,
+      },
+    }),
+  };
+  const logcat = new AdbLogcat(
+    new AdbClient({ adbPath: 'adb', defaultTimeoutMs: 1_000, maxOutputBytes: 64_000, runner }),
+    64_000,
+  );
+  const crashes = await logcat.crashes('serial', 'com.example.app');
+  assert.equal(crashes.length, 1);
+  assert.equal(crashes[0]?.processPackage, 'com.example.app');
 });

@@ -11,10 +11,7 @@ export function jsonContent(result: ResultEnvelope<unknown>): CallToolResult {
   };
 }
 
-export function imageContent(
-  result: SuccessEnvelope<unknown>,
-  png: Buffer,
-): CallToolResult {
+export function imageContent(result: SuccessEnvelope<unknown>, png: Buffer): CallToolResult {
   return {
     content: [
       { type: 'image', data: png.toString('base64'), mimeType: 'image/png' },

@@ -17,7 +17,9 @@ function snapshot(xml: string) {
 }
 
 test('normalizes hierarchy nodes, relations, centers, and password redaction', () => {
-  const result = snapshot(`<hierarchy rotation="0"><node class="android.widget.FrameLayout" package="com.example.app" bounds="[0,0][1080,2400]" enabled="true" visible-to-user="true"><node class="android.widget.EditText" package="com.example.app" text="secret-value" password="true" focused="true" enabled="true" bounds="[10,20][210,120]" resource-id="com.example.app:id/password"/><node class="android.widget.Button" package="com.example.app" text="Continue" clickable="true" enabled="true" bounds="[10,150][300,260]"/></node></hierarchy>`);
+  const result = snapshot(
+    `<hierarchy rotation="0"><node class="android.widget.FrameLayout" package="com.example.app" bounds="[0,0][1080,2400]" enabled="true" visible-to-user="true"><node class="android.widget.EditText" package="com.example.app" text="secret-value" password="true" focused="true" enabled="true" bounds="[10,20][210,120]" resource-id="com.example.app:id/password"/><node class="android.widget.Button" package="com.example.app" text="Continue" clickable="true" enabled="true" bounds="[10,150][300,260]"/></node></hierarchy>`,
+  );
 
   assert.equal(result.nodes.length, 3);
   assert.equal(result.nodes[1]?.text, '[REDACTED]');
@@ -27,15 +29,26 @@ test('normalizes hierarchy nodes, relations, centers, and password redaction', (
 });
 
 test('finds exact semantic elements and rejects equally strong ambiguity', () => {
-  const result = snapshot(`<hierarchy><node class="android.widget.LinearLayout" package="com.example.app" bounds="[0,0][500,500]" enabled="true"><node class="android.widget.Button" package="com.example.app" text="Continue" clickable="true" enabled="true" bounds="[0,0][100,100]"/><node class="android.widget.Button" package="com.example.app" text="Continue" clickable="true" enabled="true" bounds="[100,0][200,100]"/></node></hierarchy>`);
-  const matches = findMatches(result, { text: 'continue', textCaseSensitive: false, clickable: true });
+  const result = snapshot(
+    `<hierarchy><node class="android.widget.LinearLayout" package="com.example.app" bounds="[0,0][500,500]" enabled="true"><node class="android.widget.Button" package="com.example.app" text="Continue" clickable="true" enabled="true" bounds="[0,0][100,100]"/><node class="android.widget.Button" package="com.example.app" text="Continue" clickable="true" enabled="true" bounds="[100,0][200,100]"/></node></hierarchy>`,
+  );
+  const matches = findMatches(result, {
+    text: 'continue',
+    textCaseSensitive: false,
+    clickable: true,
+  });
   assert.equal(matches.length, 2);
   assert.throws(() => resolveUniqueMatch(result, { text: 'Continue', clickable: true }));
-  assert.equal(resolveUniqueMatch(result, { text: 'Continue', clickable: true }, 1).node.nodeId, 'node-0.1');
+  assert.equal(
+    resolveUniqueMatch(result, { text: 'Continue', clickable: true }, 1).node.nodeId,
+    'node-0.1',
+  );
 });
 
 test('warns about custom-rendered surfaces and malformed bounds', () => {
-  const result = snapshot(`<hierarchy><node class="android.view.SurfaceView" package="com.example.app" bounds="bad" enabled="true"/></hierarchy>`);
+  const result = snapshot(
+    `<hierarchy><node class="android.view.SurfaceView" package="com.example.app" bounds="bad" enabled="true"/></hierarchy>`,
+  );
   assert.ok(result.warnings.some((warning) => warning.code === 'NON_SEMANTIC_SURFACE'));
   assert.ok(result.warnings.some((warning) => warning.code === 'MISSING_BOUNDS'));
 });

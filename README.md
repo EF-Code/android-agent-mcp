@@ -9,7 +9,7 @@ The server does not call a language model and does not bypass Android locks, aut
 Implemented and locally verified:
 
 - TypeScript build and strict type-checking
-- 23 automated unit and MCP stdio protocol tests
+- 46 automated test cases currently report 45 passes and one explicitly skipped physical-device case
 - ADB/scrcpy adapters with injectable command runners
 - Device discovery, explicit selection, screenshots, UIAutomator parsing, semantic selectors, input, app inspection, logcat, scrcpy ownership, and evidence sessions
 - Path-restricted APK installation and approval-gated mutations
@@ -32,14 +32,25 @@ scrcpy --version
 adb devices -l
 ```
 
+The repository also provides a read-only environment check:
+
+```zsh
+npm run check:environment
+# Add -- --require-scrcpy when mirroring is required.
+```
+
+It never installs packages, changes udev rules, restarts ADB, or uses elevated privileges.
+
 ## Install from a checkout
 
 ```zsh
 git clone https://github.com/EF-Code/scrcpy-mcp.git
 cd scrcpy-mcp
-npm ci
-npm run build
+npm run install:local
+npm run verify
 ```
+
+`npm run install:local` runs the locked local dependency install, builds the server, and prints the resolved absolute MCP entrypoint and Codex registration command. It does not install system packages, change udev rules, restart ADB, or use elevated privileges. Use `npm run install:local -- --skip-dependencies` when dependencies are already installed; add `--check-environment` to run the read-only ADB/scrcpy preflight during installation.
 
 The executable is then:
 
@@ -65,7 +76,7 @@ codex mcp add android-device -- node "$PROJECT_DIR/dist/index.js"
 codex mcp list
 ```
 
-The current official OpenAI MCP guidance documents local stdio servers and the same `codex mcp add <name> -- <command>` shape. Restart Codex after registration so the server and its tools are loaded. A project-scoped `.codex/config.toml` can also be used for trusted projects.
+The [official OpenAI MCP guidance](https://learn.chatgpt.com/docs/extend/mcp) documents local stdio servers and the same `codex mcp add <name> -- <command>` shape. Restart Codex after registration so the server and its tools are loaded. A project-scoped `.codex/config.toml` can also be used for trusted projects.
 
 ## Configuration
 
@@ -85,6 +96,7 @@ Example:
   "autoSelectSingleDevice": true,
   "allowedPackages": ["com.example.test"],
   "sensitivePackages": ["com.android.settings", "*.bank.*", "*.wallet.*"],
+  "allowedRuntimePermissions": [],
   "allowedApkRoots": ["/home/user/projects"],
   "evidenceRoot": "/home/user/android-device-mcp-evidence",
   "maxScreenshotBytes": 25000000,
@@ -93,6 +105,7 @@ Example:
   "maxCommandOutputBytes": 4000000,
   "maxEvidenceBytes": 100000000,
   "maxEvidenceFiles": 500,
+  "evidenceRetentionMaxAgeMs": 604800000,
   "defaultTimeoutMs": 15000,
   "uiSnapshotMaxAgeMs": 3000,
   "approvalMode": "prompt",
@@ -114,9 +127,13 @@ Environment overrides use the `ANDROID_DEVICE_MCP_` prefix. Lists are comma-sepa
 4. Use `ui_dump`/`ui_find` before coordinate tools.
 5. For each action, observe, act, wait briefly, observe again, and report uncertainty.
 6. Keep every package inside the configured allowlist.
-7. Ask for approval before APK installation, permission changes, clear-data, or other mutating operations.
+7. Mutating tools remain fail-closed unless the host explicitly uses `approvalMode: "allow"`; keep Codex write approval enabled as an additional client control.
 8. Use `mirror_start` only when the user wants a visible scrcpy window; continue to act through ADB tools.
 9. Use `evidence_begin`, explicitly capture the desired artifacts, then `evidence_finish`.
+
+If the selected phone disconnects or becomes unauthorized, the server invalidates retained UI state and requires an explicit `device_select` again after reconnecting, even when the serial is unchanged.
+
+The server also finalizes an active evidence session during graceful shutdown after cleaning up its owned scrcpy process.
 
 No generic shell tool is exposed.
 
@@ -126,6 +143,9 @@ No generic shell tool is exposed.
 npm run typecheck
 npm test
 npm run build
+npm run verify
+npm pack --dry-run
+npm audit --omit=dev
 ```
 
 The automated suite uses fake/injectable command boundaries and a child-process MCP client. It does not require a phone and does not install packages or alter device state.
@@ -133,10 +153,13 @@ The automated suite uses fake/injectable command boundaries and a child-process 
 Opt-in physical tests are separate:
 
 ```zsh
-ANDROID_DEVICE_MCP_PHYSICAL=1 npm run test:physical
+export ANDROID_DEVICE_MCP_PHYSICAL=1
+export ANDROID_DEVICE_MCP_TEST_PACKAGE=com.example.androiddevicetest
+export ANDROID_DEVICE_MCP_TEST_SELECTOR='{"text":"Continue","clickable":true}'
+npm run test:physical
 ```
 
-They require a designated harmless test package and a connected authorized phone. Destructive tests are not run automatically.
+They require a designated harmless test package, a known selector, and a connected authorized phone. Destructive tests are not run automatically. Without all opt-in values or without exactly one authorized device, the case skips and remains an explicit hardware gate.
 
 ## Tool groups
 
@@ -153,6 +176,7 @@ Approval-required tools include `app_install`, `app_clear_data`, and `permission
 - Node IDs are snapshot-local and expire after the configured freshness window or a foreground change.
 - Default text entry is printable ASCII only and rejects password fields.
 - scrcpy audio/control flags are mapped only when supported by the detected version.
+- Logcat duration captures are bounded live reads; `since` selects a bounded timestamp dump.
 - No wireless pairing, multiple-device parallel control, OCR, continuous video MCP frames, root features, iOS, or remote listener is provided.
 
 See [SECURITY.md](SECURITY.md) and the documents under [docs/](docs/) for operational details.

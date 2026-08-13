@@ -28,18 +28,29 @@ export class AdbClient {
       maxOutputBytes: options.maxOutputBytes ?? this.options.maxOutputBytes,
     };
     if (options.signal !== undefined) runOptions.signal = options.signal;
-    if (options.secretArgIndexes !== undefined) runOptions.secretArgIndexes = options.secretArgIndexes;
+    if (options.secretArgIndexes !== undefined)
+      runOptions.secretArgIndexes = options.secretArgIndexes;
     if (options.env !== undefined) runOptions.env = options.env;
     if (options.environmentKeys !== undefined) runOptions.environmentKeys = options.environmentKeys;
+    if (options.captureDurationMs !== undefined)
+      runOptions.captureDurationMs = options.captureDurationMs;
     return this.runner.run(this.options.adbPath, args, runOptions);
   }
 
-  async device(serial: string, args: readonly string[], options: Partial<RunOptions> = {}): Promise<CommandOutput> {
+  async device(
+    serial: string,
+    args: readonly string[],
+    options: Partial<RunOptions> = {},
+  ): Promise<CommandOutput> {
     validateSerial(serial);
     return this.host(['-s', serial, ...args], options);
   }
 
-  async shell(serial: string, args: readonly string[], options: Partial<RunOptions> = {}): Promise<CommandOutput> {
+  async shell(
+    serial: string,
+    args: readonly string[],
+    options: Partial<RunOptions> = {},
+  ): Promise<CommandOutput> {
     if (args.length === 0) {
       throw new AppError(ErrorCode.InvalidInput, 'ADB shell argument list must not be empty.');
     }
