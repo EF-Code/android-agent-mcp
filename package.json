@@ -44,7 +44,7 @@
     "lint": "tsc --noEmit -p tsconfig.json",
     "test": "npm run build:test && node --test 'dist-test/tests/**/*.test.js'",
     "test:watch": "npm run build:test && node --test --watch 'dist-test/tests/**/*.test.js'",
-    "test:physical": "ANDROID_MCP_PHYSICAL=1 npm run build:test && ANDROID_MCP_PHYSICAL=1 node --test 'dist-test/tests/physical-device/**/*.test.js'",
+    "test:physical": "ANDROID_AGENT_MCP_PHYSICAL=1 npm run build:test && ANDROID_AGENT_MCP_PHYSICAL=1 node --test 'dist-test/tests/physical-device/**/*.test.js'",
     "check:environment": "node scripts/check-environment.mjs",
     "install:local": "node scripts/install-local.mjs",
     "verify": "npm run format:check && npm run typecheck && npm test && npm run build && npm pack --dry-run",
