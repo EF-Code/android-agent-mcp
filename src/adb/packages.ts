@@ -73,7 +73,7 @@ export class AdbPackages {
       requestedPermissions: [...new Set(requestedPermissions)].slice(0, 500),
       grantedRuntimePermissions: [...new Set(grantedRuntimePermissions)].slice(0, 500),
       enabled: output.includes('enabled=true') ? true : output.includes('enabled=false') ? false : null,
-      debuggable: output.includes('DEBUGGABLE') ? true : output.includes('DEBUGGABLE=false') ? false : null,
+      debuggable: /DEBUGGABLE(?:\s|$)/u.test(output) ? true : /DEBUGGABLE=false/u.test(output) ? false : null,
     };
   }
 
