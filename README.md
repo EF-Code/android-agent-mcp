@@ -64,6 +64,28 @@ Run it directly over stdio:
 node /absolute/path/to/android-agent-mcp/dist/index.js
 ```
 
+## Install from npm
+
+Install the published CLI globally:
+
+```zsh
+npm install --global android-agent-mcp
+command -v android-agent-mcp
+```
+
+Then configure your MCP client to launch `android-agent-mcp`. The executable is a stdio server, so it is normally started by the client instead of run interactively.
+
+Alternatively, let an MCP client download a pinned release when it starts the server. Configure the command as `npx` with these arguments:
+
+```json
+{
+  "command": "npx",
+  "args": ["--yes", "android-agent-mcp@0.1.0"]
+}
+```
+
+Installing from npm provides the MCP server and its Node.js dependencies. It does not install host prerequisites such as `adb` or `scrcpy`; install those with your operating system's documented Android platform-tools and scrcpy packages first. The package runs locally on the computer connected to the authorized phone.
+
 The process reads MCP messages from stdin and writes MCP messages to stdout. Diagnostics go to stderr.
 
 ## Codex registration
@@ -186,4 +208,4 @@ See [SECURITY.md](SECURITY.md) and the documents under [docs/](docs/) for operat
 
 ## Name compatibility
 
-The npm distribution is `@ef-code/android-agent-mcp`. The primary executable is `android-agent-mcp`; `android-mcp` and `scrcpy-agent` remain deprecated executable aliases for existing local setups. The MCP server registration name and protocol identity remain `android-device`, so existing Codex MCP configuration does not need to be renamed. Environment precedence is `ANDROID_AGENT_MCP_*`, then deprecated `ANDROID_MCP_*`, then older `ANDROID_DEVICE_MCP_*`.
+The npm distribution and primary executable are both `android-agent-mcp`. The `android-mcp` and `scrcpy-agent` executables remain deprecated aliases for existing local setups. The MCP server registration name and protocol identity remain `android-device`, so existing Codex MCP configuration does not need to be renamed. Environment precedence is `ANDROID_AGENT_MCP_*`, then deprecated `ANDROID_MCP_*`, then older `ANDROID_DEVICE_MCP_*`.
