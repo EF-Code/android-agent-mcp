@@ -33,9 +33,26 @@ export class AdbScreenshots {
   constructor(private readonly adb: AdbClient, private readonly maxBytes: number) {}
 
   async capture(serial: string): Promise<Screenshot> {
-    const output = await this.adb.device(serial, ['exec-out', 'screencap', '-p'], {
-      maxOutputBytes: this.maxBytes,
-    });
+    let output;
+    try {
+      output = await this.adb.device(serial, ['exec-out', 'screencap', '-p'], {
+        maxOutputBytes: this.maxBytes,
+      });
+    } catch (error) {
+      const appError = error instanceof AppError ? error : null;
+      if (appError?.code === ErrorCode.CommandOutputLimit) {
+        const command = appError.details.command;
+        const observedBytes = typeof command === 'object' && command !== null && 'stdoutBytes' in command && typeof command.stdoutBytes === 'number'
+          ? command.stdoutBytes
+          : null;
+        throw new AppError(ErrorCode.ScreenshotTooLarge, 'Screenshot exceeds the configured maximum byte size.', {
+          retryable: true,
+          details: { maxBytes: this.maxBytes, observedBytes, truncated: true },
+          cause: error,
+        });
+      }
+      throw error;
+    }
     if (output.stdout.length > this.maxBytes) {
       throw new AppError(ErrorCode.ScreenshotTooLarge, 'Screenshot exceeds the configured maximum byte size.', {
         details: { bytes: output.stdout.length, maxBytes: this.maxBytes },
