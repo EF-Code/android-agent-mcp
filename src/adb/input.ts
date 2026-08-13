@@ -24,10 +24,6 @@ export const KEY_CODES = {
 
 export type AllowedKey = keyof typeof KEY_CODES;
 
-function shiftSecretIndexes(indexes: ReadonlySet<number> | undefined, offset: number): ReadonlySet<number> | undefined {
-  return indexes === undefined ? undefined : new Set([...indexes].map((index) => index + offset));
-}
-
 export function encodeSafeAsciiText(value: string): string {
   if (value.length === 0 || value.length > 1_024) {
     throw new AppError(ErrorCode.InvalidInput, 'Text input must contain between 1 and 1024 characters.', {
@@ -82,7 +78,7 @@ export class AdbInput {
   async text(serial: string, value: string): Promise<number> {
     const encoded = encodeSafeAsciiText(value);
     await this.adb.shell(serial, ['input', 'text', encoded], {
-      secretArgIndexes: shiftSecretIndexes(new Set([2]), 3),
+      secretArgIndexes: new Set([5]),
     });
     return [...value].length;
   }
