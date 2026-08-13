@@ -599,7 +599,7 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
         await service.requireAllowedForeground('key press');
         const serial = await service.selectedSerial();
         await service.requireAllowedForeground('key press before action');
-        await service.input.key(serial, args.key as AllowedKey, args.allow_power ?? false);
+        await service.input.key(serial, args.key as AllowedKey);
         return jsonContent(ok({ key: args.key }, { deviceSerial: serial }));
       } catch (error) {
         return toolError(error);

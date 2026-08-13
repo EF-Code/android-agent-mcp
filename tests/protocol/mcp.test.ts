@@ -44,6 +44,9 @@ test('MCP stdio server initializes with instructions and exposes stable tools', 
     assert.equal(installTool?.annotations?.destructiveHint, true);
     const captureTool = tools.tools.find((tool) => tool.name === 'screen_capture');
     assert.equal(captureTool?.annotations?.readOnlyHint, true);
+    const keyTool = tools.tools.find((tool) => tool.name === 'key_press');
+    const keySchema = keyTool?.inputSchema as { properties?: Record<string, unknown> } | undefined;
+    assert.equal(keySchema?.properties?.allow_power, undefined);
     const result = await client.callTool({ name: 'device_list', arguments: {} });
     const content = result.content as Array<{ type: 'text' | 'image'; text?: string }>;
     const text = content.find((item) => item.type === 'text');
@@ -52,6 +55,8 @@ test('MCP stdio server initializes with instructions and exposes stable tools', 
     const parsed = JSON.parse(text.text) as { ok: boolean; data: unknown };
     assert.equal(parsed.ok, true);
     assert.ok(Array.isArray(parsed.data));
+    const blockedKey = await client.callTool({ name: 'key_press', arguments: { key: 'power' } });
+    assert.equal(blockedKey.isError, true);
   } finally {
     await client.close();
     await transport.close();

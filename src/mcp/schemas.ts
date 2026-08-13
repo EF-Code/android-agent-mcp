@@ -97,10 +97,7 @@ export const keyPressSchema = {
     'app_switch',
     'volume_up',
     'volume_down',
-    'wake',
-    'power',
   ]),
-  allow_power: z.boolean().optional(),
   verify_change: z.boolean().optional(),
 };
 
