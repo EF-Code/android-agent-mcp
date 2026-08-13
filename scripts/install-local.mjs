@@ -52,7 +52,8 @@ await run(process.execPath, [npmCli, 'run', 'build']);
 
 const entrypoint = join(projectRoot, 'dist', 'index.js');
 process.stdout.write(
-  `\nLocal installation is ready.\nMCP entrypoint: ${entrypoint}\nRun: node ${entrypoint}\n`,
+  `\nAndroid MCP local installation is ready.\nMCP entrypoint: ${entrypoint}\nRun: node ${entrypoint}\n`,
 );
+process.stdout.write('CLI after package linking or installation: android-mcp\n');
 process.stdout.write(`Codex registration: codex mcp add android-device -- node ${entrypoint}\n`);
 process.stdout.write('Restart Codex after registration so the server and tools are reloaded.\n');
