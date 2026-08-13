@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, stat, utimes } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, stat, symlink, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
 import { EvidenceManager } from '../../src/evidence/recorder.js';
+import { AppError } from '../../src/errors/app-error.js';
 import type { DeviceInfo } from '../../src/types.js';
 
 const device: DeviceInfo = {
@@ -99,4 +100,21 @@ test('prunes only expired evidence directories below the configured root', async
   );
   await assert.rejects(() => stat(oldDirectory));
   await manager.finish();
+});
+
+test('rejects evidence artifact parents that resolve outside the session directory', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'android-device-mcp-'));
+  const outside = await mkdtemp(join(tmpdir(), 'android-device-mcp-outside-'));
+  const manager = new EvidenceManager(root, 1_000_000, 20);
+  const session = await manager.begin(
+    { serverVersion: 'test', adbVersion: null, scrcpyVersion: null, device },
+    'symlink',
+  );
+  await symlink(outside, join(session.directory, 'logs'));
+  await assert.rejects(
+    () => session.saveLog('escape', 'must not be written'),
+    (error: unknown) => error instanceof AppError && error.code === 'EVIDENCE_PATH_INVALID',
+  );
+  await manager.finish();
+  await assert.rejects(() => stat(join(outside, 'escape.log')));
 });

@@ -1,6 +1,15 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { appendFile, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import {
+  appendFile,
+  mkdir,
+  readFile,
+  readdir,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
 import { ErrorCode } from '../errors/codes.js';
 import { AppError } from '../errors/app-error.js';
@@ -240,7 +249,26 @@ export class EvidenceSession {
     if (currentBytes + bytes.length > this.maxBytes) {
       throw new AppError(ErrorCode.EvidencePathInvalid, 'Evidence byte limit was reached.');
     }
-    await mkdir(resolve(target, '..'), { recursive: true });
+    const parent = dirname(target);
+    await mkdir(parent, { recursive: true });
+    let parentRealPath: string;
+    try {
+      parentRealPath = await realpath(parent);
+    } catch (error) {
+      throw new AppError(
+        ErrorCode.EvidencePathInvalid,
+        'Evidence parent directory is unavailable.',
+        {
+          cause: error,
+        },
+      );
+    }
+    if (!withinRoot(parentRealPath, this.directory)) {
+      throw new AppError(
+        ErrorCode.EvidencePathInvalid,
+        'Evidence parent directory escapes the session directory.',
+      );
+    }
     await writeFile(target, bytes, { flag: 'wx' });
     return digestFile(relativePath, bytes);
   }
