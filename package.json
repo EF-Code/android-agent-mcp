@@ -27,7 +27,12 @@
     "README.md",
     "LICENSE",
     "SECURITY.md",
-    "docs",
+    "docs/codex-setup.md",
+    "docs/compatibility.md",
+    "docs/configuration.md",
+    "docs/phone-setup.md",
+    "docs/security-model.md",
+    "docs/troubleshooting.md",
     "scripts"
   ],
   "scripts": {
