@@ -134,7 +134,7 @@ export class AndroidDeviceService {
     return foreground;
   }
 
-  async tapSelector(selector: UiSelector, matchIndex?: number): Promise<{ before: UiSnapshot; after: UiSnapshot; nodeId: string }> {
+  async tapSelector(selector: UiSelector, matchIndex?: number, verifyChange = true): Promise<{ before: UiSnapshot; after: UiSnapshot | null; nodeId: string }> {
     const serial = await this.selectedSerial();
     const before = await this.captureUi();
     const match = resolveUniqueMatch(before, selector, matchIndex);
@@ -144,7 +144,7 @@ export class AndroidDeviceService {
     if (match.node.packageName !== null) this.policy.assertPackageAllowed(match.node.packageName);
     await this.input.tap(serial, match.node.center.x, match.node.center.y);
     await this.stabilize();
-    const after = await this.captureUi();
+    const after = verifyChange ? await this.captureUi() : null;
     return { before, after, nodeId: match.node.nodeId };
   }
 
@@ -196,6 +196,18 @@ export class AndroidDeviceService {
     await this.stabilize();
     const after = options.verifyChange ? await this.captureUi() : null;
     return { before, after };
+  }
+
+  async longPress(x: number, y: number, durationMs: number): Promise<void> {
+    const serial = await this.selectedSerial();
+    const observation = await this.screenObservation(serial);
+    if (observation.display.width > 0 && (x >= observation.display.width || y >= observation.display.height)) {
+      throw new AppError(ErrorCode.InvalidCoordinates, 'Long-press coordinates are outside the native device display bounds.', {
+        details: { x, y, display: observation.display },
+      });
+    }
+    await this.input.longPress(serial, x, y, validateDuration(durationMs, 'durationMs', 30_000));
+    await this.stabilize();
   }
 
   async waitForUi(options: { selector?: UiSelector; packageName?: string; activity?: string; disappearance?: boolean; screenChange?: boolean; timeoutMs: number; pollMs: number }): Promise<{ matched: boolean; elapsedMs: number; snapshot: UiSnapshot | null; foreground: ForegroundApp }> {

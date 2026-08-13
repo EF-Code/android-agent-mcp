@@ -161,8 +161,8 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
     try {
       if (args.selector === undefined && args.node_id === undefined) throw new Error('selector or node_id is required');
       const selector = args.selector === undefined ? { nodeId: args.node_id! } : toSelector(args.selector);
-      const result = await service.tapSelector(selector, args.match_index);
-      return jsonContent(ok({ node_id: result.nodeId, before_snapshot_id: result.before.snapshotId, after_snapshot_id: result.after.snapshotId, changed: JSON.stringify(result.before.nodes) !== JSON.stringify(result.after.nodes) }, { deviceSerial: await service.selectedSerial(), warnings: result.after.warnings }));
+      const result = await service.tapSelector(selector, args.match_index, args.verify_change ?? true);
+      return jsonContent(ok({ node_id: result.nodeId, before_snapshot_id: result.before.snapshotId, after_snapshot_id: result.after?.snapshotId ?? null, changed: result.after === null ? null : JSON.stringify(result.before.nodes) !== JSON.stringify(result.after.nodes) }, { deviceSerial: await service.selectedSerial(), warnings: result.after?.warnings ?? result.before.warnings }));
     } catch (error) { return toolError(error); }
   });
 
@@ -187,7 +187,7 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
   });
 
   server.registerTool('screen_long_press', { description: 'Perform a bounded stationary long press.', inputSchema: { ...coordinateSchema, duration_ms: z.number().int().min(250).max(30_000).optional() } }, async (args) => {
-    try { const serial = await service.selectedSerial(); await service.input.longPress(serial, args.x, args.y, args.duration_ms ?? 750); await service.stabilize(); return jsonContent(ok({ x: args.x, y: args.y, duration_ms: args.duration_ms ?? 750 }, { deviceSerial: serial })); } catch (error) { return toolError(error); }
+    try { const serial = await service.selectedSerial(); await service.longPress(args.x, args.y, args.duration_ms ?? 750); return jsonContent(ok({ x: args.x, y: args.y, duration_ms: args.duration_ms ?? 750 }, { deviceSerial: serial })); } catch (error) { return toolError(error); }
   });
 
   server.registerTool('key_press', { description: 'Press an allowlisted Android testing key.', inputSchema: keyPressSchema }, async (args) => {
