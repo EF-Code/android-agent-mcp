@@ -4,9 +4,10 @@ Build the checkout before registering it:
 
 ```zsh
 cd /absolute/path/to/scrcpy-mcp
-npm ci
-npm run build
+npm run install:local
 ```
+
+The installer uses the repository lockfile, builds the server, and prints the resolved absolute entrypoint. It does not install system packages, change udev rules, restart ADB, or use elevated privileges. If dependencies are already installed, use `npm run install:local -- --skip-dependencies`.
 
 Register the compiled stdio entrypoint with the Codex CLI:
 

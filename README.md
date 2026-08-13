@@ -9,7 +9,7 @@ The server does not call a language model and does not bypass Android locks, aut
 Implemented and locally verified:
 
 - TypeScript build and strict type-checking
-- 23 automated unit and MCP stdio protocol tests
+- 41 automated test cases currently report 40 passes and one explicitly skipped physical-device case
 - ADB/scrcpy adapters with injectable command runners
 - Device discovery, explicit selection, screenshots, UIAutomator parsing, semantic selectors, input, app inspection, logcat, scrcpy ownership, and evidence sessions
 - Path-restricted APK installation and approval-gated mutations
@@ -46,10 +46,11 @@ It never installs packages, changes udev rules, restarts ADB, or uses elevated p
 ```zsh
 git clone https://github.com/EF-Code/scrcpy-mcp.git
 cd scrcpy-mcp
-npm ci
-npm run build
+npm run install:local
 npm run verify
 ```
+
+`npm run install:local` runs the locked local dependency install, builds the server, and prints the resolved absolute MCP entrypoint and Codex registration command. It does not install system packages, change udev rules, restart ADB, or use elevated privileges. Use `npm run install:local -- --skip-dependencies` when dependencies are already installed; add `--check-environment` to run the read-only ADB/scrcpy preflight during installation.
 
 The executable is then:
 
@@ -137,6 +138,9 @@ No generic shell tool is exposed.
 npm run typecheck
 npm test
 npm run build
+npm run verify
+npm pack --dry-run
+npm audit --omit=dev
 ```
 
 The automated suite uses fake/injectable command boundaries and a child-process MCP client. It does not require a phone and does not install packages or alter device state.
@@ -144,10 +148,13 @@ The automated suite uses fake/injectable command boundaries and a child-process 
 Opt-in physical tests are separate:
 
 ```zsh
-ANDROID_DEVICE_MCP_PHYSICAL=1 npm run test:physical
+export ANDROID_DEVICE_MCP_PHYSICAL=1
+export ANDROID_DEVICE_MCP_TEST_PACKAGE=com.example.androiddevicetest
+export ANDROID_DEVICE_MCP_TEST_SELECTOR='{"text":"Continue","clickable":true}'
+npm run test:physical
 ```
 
-They require a designated harmless test package and a connected authorized phone. Destructive tests are not run automatically.
+They require a designated harmless test package, a known selector, and a connected authorized phone. Destructive tests are not run automatically. Without all opt-in values or without exactly one authorized device, the case skips and remains an explicit hardware gate.
 
 ## Tool groups
 
