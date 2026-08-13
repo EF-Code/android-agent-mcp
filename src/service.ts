@@ -43,11 +43,12 @@ export class AndroidDeviceService {
   readonly snapshots: SnapshotStore;
   readonly scrcpy: ScrcpyProcessManager;
   readonly evidence: EvidenceManager;
+  private readonly activeLogControllers = new Set<AbortController>();
 
   constructor(readonly config: ServerConfig) {
     this.adb = new AdbClient({ adbPath: config.adbPath, defaultTimeoutMs: config.defaultTimeoutMs, maxOutputBytes: config.maxCommandOutputBytes });
     this.policy = new Policy(config);
-    this.devices = new DeviceManager(this.adb, config.autoSelectSingleDevice, () => this.snapshots.invalidate());
+    this.devices = new DeviceManager(this.adb, config.autoSelectSingleDevice, (serial) => this.handleDisconnect(serial));
     this.foreground = new AdbForeground(this.adb);
     this.input = new AdbInput(this.adb);
     this.installer = new AdbInstaller(this.adb, config.allowedApkRoots, config.maxApkBytes);
@@ -63,7 +64,15 @@ export class AndroidDeviceService {
   }
 
   async close(): Promise<void> {
+    for (const controller of this.activeLogControllers) controller.abort();
     await this.scrcpy.dispose();
+  }
+
+  private handleDisconnect(serial: string): void {
+    this.snapshots.invalidate();
+    this.scrcpy.markDetached(serial);
+    for (const controller of this.activeLogControllers) controller.abort();
+    this.evidence.pause(`selected device ${serial} disconnected`);
   }
 
   async selectedSerial(): Promise<string> {
@@ -163,6 +172,16 @@ export class AndroidDeviceService {
       deviceSerial: session.serial,
       deviceSessionId: session.sessionId,
     });
+  }
+
+  async captureLogcat(serial: string, options: Omit<LogCaptureOptions, 'signal'> = {}): Promise<Awaited<ReturnType<AdbLogcat['capture']>>> {
+    const controller = new AbortController();
+    this.activeLogControllers.add(controller);
+    try {
+      return await this.logcat.capture(serial, { ...options, signal: controller.signal });
+    } finally {
+      this.activeLogControllers.delete(controller);
+    }
   }
 
   async stabilize(): Promise<void> {

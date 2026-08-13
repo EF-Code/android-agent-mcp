@@ -24,6 +24,7 @@ interface OwnedScrcpy {
   exitCode: number | null;
   signal: NodeJS.Signals | null;
   spawnError: string | null;
+  detached: boolean;
 }
 
 export interface ScrcpyStatus {
@@ -38,6 +39,7 @@ export interface ScrcpyStatus {
   diagnostic: string;
   diagnosticTruncated: boolean;
   capabilities: ScrcpyCapabilities | null;
+  detached: boolean;
 }
 
 const MIRROR_ENVIRONMENT_KEYS = [
@@ -127,6 +129,7 @@ export class ScrcpyProcessManager {
       exitCode: null,
       signal: null,
       spawnError: null,
+      detached: false,
     };
     this.owner = owner;
     child.stderr?.on('data', (chunk: Buffer) => {
@@ -162,7 +165,12 @@ export class ScrcpyProcessManager {
       diagnostic: owner === null ? '' : redactLogText(owner.spawnError ?? owner.stderr).slice(-32_000),
       diagnosticTruncated: owner?.stderrTruncated ?? false,
       capabilities: this.capabilities,
+      detached: owner?.detached ?? false,
     };
+  }
+
+  markDetached(serial: string): void {
+    if (this.owner?.serial === serial && isRunning(this.owner)) this.owner.detached = true;
   }
 
   async stop(): Promise<ScrcpyStatus> {

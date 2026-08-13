@@ -153,7 +153,7 @@ function registerReadOnlyTools(server: McpServer, service: AndroidDeviceService)
         ...(args.max_bytes === undefined ? {} : { maxBytes: args.max_bytes }),
         ...(args.include_crash_buffer === undefined ? {} : { includeCrashBuffer: args.include_crash_buffer }),
       };
-      const capture = await service.logcat.capture(serial, options);
+      const capture = await service.captureLogcat(serial, options);
       const evidence = service.evidence.activeSession;
       if (evidence !== null && !evidence.paused) await evidence.saveLog(`logcat-${Date.now()}`, capture.text);
       return jsonContent(ok(capture, { deviceSerial: serial }));
