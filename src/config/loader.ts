@@ -18,6 +18,7 @@ const configInputSchema = z
     allowedApkRoots: z.array(z.string().min(1).refine(isAbsolute, 'must be absolute')),
     evidenceRoot: z.string().min(1).refine(isAbsolute, 'must be absolute'),
     maxScreenshotBytes: z.number().int().min(1_024).max(100_000_000),
+    maxApkBytes: z.number().int().min(1_024).max(2_000_000_000),
     maxLogBytes: z.number().int().min(1_024).max(50_000_000),
     maxCommandOutputBytes: z.number().int().min(1_024).max(100_000_000),
     maxEvidenceBytes: z.number().int().min(1_024).max(1_000_000_000),
@@ -81,6 +82,7 @@ function environmentOverrides(env: NodeJS.ProcessEnv): ConfigInput {
 
   const numericFields: Array<[keyof ConfigInput, string]> = [
     ['maxScreenshotBytes', 'ANDROID_DEVICE_MCP_MAX_SCREENSHOT_BYTES'],
+    ['maxApkBytes', 'ANDROID_DEVICE_MCP_MAX_APK_BYTES'],
     ['maxLogBytes', 'ANDROID_DEVICE_MCP_MAX_LOG_BYTES'],
     ['maxCommandOutputBytes', 'ANDROID_DEVICE_MCP_MAX_COMMAND_OUTPUT_BYTES'],
     ['maxEvidenceBytes', 'ANDROID_DEVICE_MCP_MAX_EVIDENCE_BYTES'],
@@ -153,6 +155,7 @@ export function loadConfig(options: { configPath?: string; env?: NodeJS.ProcessE
     allowedApkRoots: overrides.allowedApkRoots ?? input.allowedApkRoots ?? defaults.allowedApkRoots,
     evidenceRoot: overrides.evidenceRoot ?? input.evidenceRoot ?? defaults.evidenceRoot,
     maxScreenshotBytes: overrides.maxScreenshotBytes ?? input.maxScreenshotBytes ?? defaults.maxScreenshotBytes,
+    maxApkBytes: overrides.maxApkBytes ?? input.maxApkBytes ?? defaults.maxApkBytes,
     maxLogBytes: overrides.maxLogBytes ?? input.maxLogBytes ?? defaults.maxLogBytes,
     maxCommandOutputBytes:
       overrides.maxCommandOutputBytes ?? input.maxCommandOutputBytes ?? defaults.maxCommandOutputBytes,
