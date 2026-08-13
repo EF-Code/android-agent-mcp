@@ -24,6 +24,5 @@ export interface ServerConfig {
   defaultTimeoutMs: number;
   uiSnapshotMaxAgeMs: number;
   approvalMode: ApprovalMode;
-  leaveScrcpyRunningOnExit: boolean;
   mirror: MirrorConfig;
 }

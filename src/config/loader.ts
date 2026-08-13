@@ -26,7 +26,6 @@ const configInputSchema = z
     defaultTimeoutMs: z.number().int().min(250).max(120_000),
     uiSnapshotMaxAgeMs: z.number().int().min(250).max(60_000),
     approvalMode: z.enum(['prompt', 'allow', 'deny']),
-    leaveScrcpyRunningOnExit: z.boolean(),
     mirror: z
       .object({
         maxSize: z.number().int().min(240).max(8_000),
@@ -164,8 +163,6 @@ export function loadConfig(options: { configPath?: string; env?: NodeJS.ProcessE
     defaultTimeoutMs: overrides.defaultTimeoutMs ?? input.defaultTimeoutMs ?? defaults.defaultTimeoutMs,
     uiSnapshotMaxAgeMs: overrides.uiSnapshotMaxAgeMs ?? input.uiSnapshotMaxAgeMs ?? defaults.uiSnapshotMaxAgeMs,
     approvalMode: overrides.approvalMode ?? input.approvalMode ?? defaults.approvalMode,
-    leaveScrcpyRunningOnExit:
-      overrides.leaveScrcpyRunningOnExit ?? input.leaveScrcpyRunningOnExit ?? defaults.leaveScrcpyRunningOnExit,
     mirror,
   };
 }

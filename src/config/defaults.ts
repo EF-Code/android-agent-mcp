@@ -21,7 +21,6 @@ export function defaultConfig(): ServerConfig {
     defaultTimeoutMs: 15_000,
     uiSnapshotMaxAgeMs: 3_000,
     approvalMode: 'prompt',
-    leaveScrcpyRunningOnExit: false,
     mirror: {
       maxSize: 1_600,
       maxFps: 30,

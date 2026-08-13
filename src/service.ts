@@ -58,7 +58,7 @@ export class AndroidDeviceService {
     this.screenshots = new AdbScreenshots(this.adb, config.maxScreenshotBytes);
     this.uiAutomator = new AdbUiAutomator(this.adb);
     this.snapshots = new SnapshotStore(config.uiSnapshotMaxAgeMs);
-    this.scrcpy = new ScrcpyProcessManager(config.scrcpyPath, config.leaveScrcpyRunningOnExit);
+    this.scrcpy = new ScrcpyProcessManager(config.scrcpyPath, config.mirror.leaveRunningOnExit);
     this.evidence = new EvidenceManager(config.evidenceRoot, config.maxEvidenceBytes, config.maxEvidenceFiles);
   }
 
