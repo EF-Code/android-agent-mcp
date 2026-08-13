@@ -23,12 +23,13 @@
     "clean": "rm -rf dist coverage",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "lint": "eslint .",
-    "test": "node --import tsx --test",
-    "test:watch": "node --import tsx --test --watch",
-    "test:physical": "ANDROID_DEVICE_MCP_PHYSICAL=1 node --import tsx --test tests/physical-device",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "test": "npm run build:test && node --test dist-test/tests",
+    "test:watch": "npm run build:test && node --test --watch dist-test/tests",
+    "test:physical": "ANDROID_DEVICE_MCP_PHYSICAL=1 npm run build:test && ANDROID_DEVICE_MCP_PHYSICAL=1 node --test dist-test/tests/physical-device",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "build:test": "tsc -p tsconfig.test.json"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
@@ -36,13 +37,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
     "@types/node": "^26.2.0",
-    "eslint": "^10.8.1",
-    "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.9.6",
-    "tsx": "^4.23.12",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.67.0"
+    "typescript": "^5.9.3"
   }
 }
