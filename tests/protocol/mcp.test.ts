@@ -20,7 +20,9 @@ test('MCP stdio server initializes with instructions and exposes stable tools', 
     env: {
       PATH: process.env.PATH ?? '',
       HOME: process.env.HOME ?? '',
+      ANDROID_DEVICE_MCP_ADB_PATH: fakeAdb,
       ANDROID_DEVICE_MCP_ALLOWED_PACKAGES: 'com.example.app',
+      ANDROID_DEVICE_MCP_MIRROR_AUTO_START: 'false',
     },
   });
   const client = new Client({ name: 'protocol-test', version: '1.0.0' });
