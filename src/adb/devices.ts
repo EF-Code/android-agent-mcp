@@ -70,7 +70,7 @@ export class DeviceManager {
       if (this.wasConnected) this.onDisconnect(this.selectedSerial);
       this.wasConnected = false;
       devices = devices.map((device) => ({ ...device, selected: false }));
-    } else if (selected !== undefined) {
+    } else if (selected !== undefined && selected !== null) {
       if (this.wasConnected && !selected.authorized) this.onDisconnect(selected.serial);
       this.wasConnected = selected.authorized;
     }
