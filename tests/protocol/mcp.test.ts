@@ -24,8 +24,11 @@ test('MCP stdio server initializes with instructions and exposes stable tools', 
     },
   });
   const client = new Client({ name: 'protocol-test', version: '1.0.0' });
+  let serverPid: number | null = null;
   try {
     await client.connect(transport);
+    serverPid = transport.pid;
+    assert.ok(serverPid !== null);
     assert.deepEqual(client.getServerVersion(), { name: 'android-device', version: '0.1.0' });
     const instructions = client.getInstructions();
     assert.ok(instructions?.startsWith('Select exactly one authorized Android device'));
@@ -52,6 +55,7 @@ test('MCP stdio server initializes with instructions and exposes stable tools', 
   } finally {
     await client.close();
     await transport.close();
+    assert.equal(transport.pid, null);
   }
 });
 
