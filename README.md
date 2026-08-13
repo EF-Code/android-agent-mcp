@@ -14,7 +14,7 @@ Implemented and locally verified:
 - Device discovery, explicit selection, screenshots, UIAutomator parsing, semantic selectors, input, app inspection, logcat, scrcpy ownership, and evidence sessions
 - Path-restricted APK installation and approval-gated mutations
 
-Physical-device validation is opt-in and remains a separate gate. The current branch has not completed its final physical run because the phone disconnected from ADB; do not interpret the passing automated tests as proof of phone behavior.
+Physical-device validation is opt-in and remains a separate gate. The full MCP stdio path has been validated on an authorized Samsung SM-A075F: discovery, selection, device information, visible scrcpy, app launch, screenshot image content, UI dump/find/tap, bounded logcat, evidence completion, and owned-mirror shutdown.
 
 ## Requirements
 
@@ -131,7 +131,7 @@ The default `allowedPackages` policy is `*`, so the agent does not require manua
 5. For each action, observe, act, wait briefly, observe again, and report uncertainty.
 6. General valid packages are available by default; honor configured sensitive-package blocks.
 7. Mutating tools remain fail-closed unless the host explicitly uses `approvalMode: "allow"`; keep Codex write approval enabled as an additional client control.
-8. Selecting a device starts the visible scrcpy mirror automatically unless `mirror.autoStart` is disabled.
+8. Selecting a device makes one best-effort attempt to start the visible scrcpy mirror unless `mirror.autoStart` is disabled. A scrcpy failure is returned as a warning and never blocks ADB tools. After `mirror_stop`, use `mirror_start` to reopen it explicitly.
 9. Use `evidence_begin`, explicitly capture the desired artifacts, then `evidence_finish`.
 
 If the selected phone disconnects or becomes unauthorized, the server invalidates retained UI state and requires an explicit `device_select` again after reconnecting, even when the serial is unchanged.
@@ -158,11 +158,11 @@ Opt-in physical tests are separate:
 ```zsh
 export ANDROID_DEVICE_MCP_PHYSICAL=1
 export ANDROID_DEVICE_MCP_TEST_PACKAGE=com.example.androiddevicetest
-export ANDROID_DEVICE_MCP_TEST_SELECTOR='{"text":"Continue","clickable":true}'
+export ANDROID_DEVICE_MCP_TEST_SELECTOR='{"text":"7"}'
 npm run test:physical
 ```
 
-The physical harness remains deliberately explicit: it requires a designated test package, a known selector, and exactly one connected authorized phone. This fixture is separate from normal MCP operation, where the default policy permits all valid non-sensitive packages. Destructive tests are not run automatically.
+The physical harness remains deliberately explicit: it requires a designated test package, a repeatable harmless selector, and exactly one connected authorized phone. It starts the actual stdio MCP server and drives the complete protocol path. This fixture is separate from normal MCP operation, where the default policy permits all valid non-sensitive packages. Destructive tests are not run automatically.
 
 ## Tool groups
 
