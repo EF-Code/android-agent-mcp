@@ -103,11 +103,14 @@ export class AndroidDeviceService {
   }
 
   async captureUi(): Promise<UiSnapshot> {
-    const serial = await this.selectedSerial();
+    const session = await this.devices.requireSelected();
+    const serial = session.serial;
     const observation = await this.screenObservation(serial);
     const xml = await this.uiAutomator.dump(serial);
     const snapshot = parseUiAutomatorXml(xml, {
         snapshotId: randomUUID(),
+        deviceSerial: session.serial,
+        deviceSessionId: session.sessionId,
         capturedAt: new Date().toISOString(),
         display: observation.display,
         foreground: observation.foreground,
@@ -149,6 +152,15 @@ export class AndroidDeviceService {
     return foreground;
   }
 
+  async requireFreshSnapshot(snapshotId: string): Promise<UiSnapshot> {
+    const session = await this.devices.requireSelected();
+    return this.snapshots.requireFresh(snapshotId, {
+      foreground: await this.currentForeground(),
+      deviceSerial: session.serial,
+      deviceSessionId: session.sessionId,
+    });
+  }
+
   async stabilize(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, STARTUP_WAIT_MS));
   }
@@ -164,10 +176,10 @@ export class AndroidDeviceService {
     return foreground;
   }
 
-  async tapSelector(selector: UiSelector, matchIndex?: number, verifyChange = true): Promise<{ before: UiSnapshot; after: UiSnapshot | null; nodeId: string }> {
+  async tapSelector(selector: UiSelector, matchIndex?: number, verifyChange = true, sourceSnapshot?: UiSnapshot): Promise<{ before: UiSnapshot; after: UiSnapshot | null; nodeId: string }> {
     const serial = await this.selectedSerial();
     const foreground = await this.requireAllowedForeground('semantic tap');
-    const before = await this.captureUi();
+    const before = sourceSnapshot === undefined ? await this.captureUi() : await this.requireFreshSnapshot(sourceSnapshot.snapshotId);
     this.policy.assertForegroundAllowed(before.foreground, 'semantic tap');
     if (before.foreground.packageName !== foreground.packageName || before.foreground.activity !== foreground.activity) {
       throw new AppError(ErrorCode.StaleUiSnapshot, 'Foreground changed while preparing the semantic tap.', {

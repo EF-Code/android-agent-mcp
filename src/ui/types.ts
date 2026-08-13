@@ -35,6 +35,8 @@ export interface UiNode {
 
 export interface UiSnapshot {
   snapshotId: string;
+  deviceSerial?: string;
+  deviceSessionId?: string;
   capturedAt: string;
   display: DisplayInfo;
   foreground: ForegroundApp;

@@ -81,6 +81,8 @@ export function parseUiAutomatorXml(
   xml: string,
   options: {
     snapshotId: string;
+    deviceSerial?: string;
+    deviceSessionId?: string;
     capturedAt: string;
     display: DisplayInfo;
     foreground: ForegroundApp;
@@ -178,6 +180,8 @@ export function parseUiAutomatorXml(
 
   return {
     snapshotId: options.snapshotId,
+    ...(options.deviceSerial === undefined ? {} : { deviceSerial: options.deviceSerial }),
+    ...(options.deviceSessionId === undefined ? {} : { deviceSessionId: options.deviceSessionId }),
     capturedAt: options.capturedAt,
     display: options.display,
     foreground: options.foreground,

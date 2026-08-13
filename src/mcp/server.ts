@@ -96,7 +96,7 @@ function registerReadOnlyTools(server: McpServer, service: AndroidDeviceService)
 
   registerTool(server, 'ui_find', { description: 'Find matching elements in a fresh or retained UI snapshot.', inputSchema: uiFindSchema }, async (args) => {
     try {
-      const snapshot = args.snapshot_id === undefined ? await service.captureUi() : service.snapshots.requireFresh(args.snapshot_id, await service.currentForeground());
+      const snapshot = args.snapshot_id === undefined ? await service.captureUi() : await service.requireFreshSnapshot(args.snapshot_id);
       const matches = (await import('../ui/selectors.js')).findMatches(snapshot, toSelector(args.selector));
       return jsonContent(ok({ snapshot_id: snapshot.snapshotId, matches }, { deviceSerial: await service.selectedSerial(), warnings: snapshot.warnings }));
     } catch (error) { return toolError(error); }
@@ -178,9 +178,13 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
 
   registerTool(server, 'ui_tap', { description: 'Tap one uniquely resolved visible semantic UI element and verify the result.', inputSchema: uiTapSchema }, async (args) => {
     try {
-      if (args.selector === undefined && args.node_id === undefined) throw new AppError(ErrorCode.InvalidInput, 'selector or node_id is required');
-      const selector = args.selector === undefined ? { nodeId: args.node_id! } : toSelector(args.selector);
-      const result = await service.tapSelector(selector, args.match_index, args.verify_change ?? true);
+      const selectorNodeId = (args.selector as { nodeId?: string } | undefined)?.nodeId;
+      const requestedNodeId = args.node_id ?? selectorNodeId;
+      if (args.selector === undefined && requestedNodeId === undefined) throw new AppError(ErrorCode.InvalidInput, 'selector or node_id is required');
+      if (requestedNodeId !== undefined && args.snapshot_id === undefined) throw new AppError(ErrorCode.InvalidInput, 'snapshot_id is required when ui_tap uses a snapshot-local node_id.');
+      const selector = args.selector === undefined ? { nodeId: requestedNodeId! } : toSelector(args.selector);
+      const sourceSnapshot = args.snapshot_id === undefined ? undefined : await service.requireFreshSnapshot(args.snapshot_id);
+      const result = await service.tapSelector(selector, args.match_index, args.verify_change ?? true, sourceSnapshot);
       return jsonContent(ok({ node_id: result.nodeId, before_snapshot_id: result.before.snapshotId, after_snapshot_id: result.after?.snapshotId ?? null, changed: result.after === null ? null : JSON.stringify(result.before.nodes) !== JSON.stringify(result.after.nodes) }, { deviceSerial: await service.selectedSerial(), warnings: result.after?.warnings ?? result.before.warnings }));
     } catch (error) { return toolError(error); }
   });

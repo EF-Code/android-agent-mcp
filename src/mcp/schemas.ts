@@ -56,6 +56,7 @@ export const uiFindSchema = {
 export const uiTapSchema = {
   selector: selectorSchema.optional(),
   node_id: z.string().min(1).max(128).optional(),
+  snapshot_id: z.string().min(1).max(128).optional(),
   match_index: z.number().int().min(0).max(100).optional(),
   verify_change: z.boolean().optional(),
 };

@@ -31,7 +31,10 @@ export class SnapshotStore {
     return id === null ? null : (this.snapshots.get(id) ?? null);
   }
 
-  requireFresh(snapshotId: string | undefined, foreground?: ForegroundApp): UiSnapshot {
+  requireFresh(
+    snapshotId: string | undefined,
+    context: { foreground?: ForegroundApp; deviceSerial?: string; deviceSessionId?: string } = {},
+  ): UiSnapshot {
     const snapshot = this.get(snapshotId);
     if (snapshot === null) {
       throw new AppError(ErrorCode.StaleUiSnapshot, 'UI snapshot is missing or no longer retained.', {
@@ -49,16 +52,30 @@ export class SnapshotStore {
     }
 
     if (
-      foreground !== undefined &&
-      (foreground.packageName !== snapshot.foreground.packageName || foreground.activity !== snapshot.foreground.activity)
+      context.foreground !== undefined &&
+      (context.foreground.packageName !== snapshot.foreground.packageName || context.foreground.activity !== snapshot.foreground.activity)
     ) {
       throw new AppError(ErrorCode.StaleUiSnapshot, 'Foreground application changed after the UI snapshot was captured.', {
         retryable: true,
         details: {
           snapshotId: snapshot.snapshotId,
           snapshotForeground: snapshot.foreground,
-          currentForeground: foreground,
+          currentForeground: context.foreground,
         },
+      });
+    }
+
+    if (context.deviceSerial !== undefined && snapshot.deviceSerial !== undefined && snapshot.deviceSerial !== context.deviceSerial) {
+      throw new AppError(ErrorCode.StaleUiSnapshot, 'UI snapshot belongs to a different device serial.', {
+        retryable: true,
+        details: { snapshotId: snapshot.snapshotId },
+      });
+    }
+
+    if (context.deviceSessionId !== undefined && snapshot.deviceSessionId !== undefined && snapshot.deviceSessionId !== context.deviceSessionId) {
+      throw new AppError(ErrorCode.StaleUiSnapshot, 'UI snapshot belongs to a different device session.', {
+        retryable: true,
+        details: { snapshotId: snapshot.snapshotId },
       });
     }
 
