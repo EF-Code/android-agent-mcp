@@ -90,7 +90,11 @@ export class AdbProperties {
 
   async rotation(serial: string): Promise<0 | 1 | 2 | 3> {
     const output = await this.adb.text(
-      this.adb.shell(serial, ['dumpsys', 'input'], { timeoutMs: 10_000, maxOutputBytes: 64_000 }),
+      this.adb.shell(serial, ['dumpsys', 'input'], {
+        timeoutMs: 10_000,
+        // Samsung and other OEM builds routinely exceed 64 KiB here.
+        maxOutputBytes: 256_000,
+      }),
     );
     const match = /(?:SurfaceOrientation|mSurfaceOrientation|mRotation)\s*[:=]\s*(\d+)/u.exec(
       output,
