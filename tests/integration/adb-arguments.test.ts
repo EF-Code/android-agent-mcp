@@ -53,7 +53,7 @@ class RecordingRunner implements CommandRunner {
     this.calls.push({ executable, args: [...args], options });
     if (args.includes('screencap')) return output(png());
     if (args.includes('uiautomator'))
-      return output('UI hier dumped to: /sdcard/android_device_mcp_ui.xml');
+      return output('UI hier dumped to: /sdcard/android_mcp_ui.xml');
     if (args.includes('exec-out') && args.includes('cat'))
       return output('<hierarchy><node bounds="[0,0][10,10]" enabled="true"/></hierarchy>');
     if (args.includes('logcat') && args.includes('epoch'))
@@ -100,10 +100,10 @@ test('uses direct ADB argument arrays for screenshots and UIAutomator', async ()
         'uiautomator',
         'dump',
         '--compressed',
-        '/sdcard/android_device_mcp_ui.xml',
+        '/sdcard/android_mcp_ui.xml',
       ],
-      ['-s', 'serial-2', 'exec-out', 'cat', '/sdcard/android_device_mcp_ui.xml'],
-      ['-s', 'serial-2', 'shell', 'rm', '-f', '/sdcard/android_device_mcp_ui.xml'],
+      ['-s', 'serial-2', 'exec-out', 'cat', '/sdcard/android_mcp_ui.xml'],
+      ['-s', 'serial-2', 'shell', 'rm', '-f', '/sdcard/android_mcp_ui.xml'],
     ],
   );
 });
