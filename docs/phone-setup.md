@@ -13,6 +13,8 @@
 
 7. Confirm the device state is `device`, not `unauthorized`, `offline`, or `no permissions`.
 
+From the repository, `npm run check:environment` performs a read-only host tool check. Use `npm run check:environment -- --require-scrcpy` when mirroring is required.
+
 If the state is `unauthorized`, accept the prompt on the phone. If it is `offline`, reconnect the cable and let the user decide whether to restart ADB. If it is `no permissions`, fix the Linux udev/group configuration deliberately; this server does not modify udev rules or use elevated privileges.
 
 The server will not unlock the phone, enter a PIN/password, dismiss user-consent prompts, or operate a locked device. Keep personal applications off the allowlist. Prefer a purpose-built harmless test app with a known package name and deterministic accessibility labels.

@@ -32,6 +32,15 @@ scrcpy --version
 adb devices -l
 ```
 
+The repository also provides a read-only environment check:
+
+```zsh
+npm run check:environment
+# Add -- --require-scrcpy when mirroring is required.
+```
+
+It never installs packages, changes udev rules, restarts ADB, or uses elevated privileges.
+
 ## Install from a checkout
 
 ```zsh
@@ -39,6 +48,7 @@ git clone https://github.com/EF-Code/scrcpy-mcp.git
 cd scrcpy-mcp
 npm ci
 npm run build
+npm run verify
 ```
 
 The executable is then:
@@ -115,7 +125,7 @@ Environment overrides use the `ANDROID_DEVICE_MCP_` prefix. Lists are comma-sepa
 4. Use `ui_dump`/`ui_find` before coordinate tools.
 5. For each action, observe, act, wait briefly, observe again, and report uncertainty.
 6. Keep every package inside the configured allowlist.
-7. Ask for approval before APK installation, permission changes, clear-data, or other mutating operations.
+7. Mutating tools remain fail-closed unless the host explicitly uses `approvalMode: "allow"`; keep Codex write approval enabled as an additional client control.
 8. Use `mirror_start` only when the user wants a visible scrcpy window; continue to act through ADB tools.
 9. Use `evidence_begin`, explicitly capture the desired artifacts, then `evidence_finish`.
 
