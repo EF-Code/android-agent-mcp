@@ -79,6 +79,9 @@ test('returns image content and structured errors over MCP stdio', async () => {
     const companion = content.find((item) => item.type === 'text');
     assert.ok(companion?.text?.includes('"width": 1080'));
 
+    const invalidResult = await client.callTool({ name: 'screen_capture', arguments: { save_to_evidence: 'yes' } });
+    assert.equal(invalidResult.isError, true);
+
     const errorResult = await client.callTool({ name: 'app_clear_data', arguments: { package_name: 'com.example.app' } });
     assert.equal(errorResult.isError, true);
     const errorContent = errorResult.content as Array<{ type: string; text?: string }>;
