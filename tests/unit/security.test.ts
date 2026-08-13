@@ -40,6 +40,10 @@ test('enforces package allowlist, sensitive patterns, and host mutation approval
     (error: unknown) => error instanceof AppError && error.code === ErrorCode.SensitivePackage,
   );
   assert.throws(
+    () => policy.assertPackageAllowed('not a package'),
+    (error: unknown) => error instanceof AppError && error.code === ErrorCode.InvalidPackage,
+  );
+  assert.throws(
     () => policy.assertMutationAllowed('app_install'),
     (error: unknown) => error instanceof AppError && error.code === ErrorCode.ApprovalRequired,
   );

@@ -2,6 +2,7 @@ import { ErrorCode } from '../errors/codes.js';
 import { AppError } from '../errors/app-error.js';
 import type { ServerConfig } from '../config/types.js';
 import type { ForegroundApp } from '../types.js';
+import { validatePackageName } from '../validation/common.js';
 
 function globToRegExp(pattern: string): RegExp {
   const escaped = pattern
@@ -31,6 +32,7 @@ export class Policy {
   }
 
   assertPackageAllowed(packageName: string): void {
+    validatePackageName(packageName);
     if (this.isSensitivePackage(packageName)) {
       throw new AppError(
         ErrorCode.SensitivePackage,
