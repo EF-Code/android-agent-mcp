@@ -30,7 +30,7 @@ Check that the device is authorized and unlocked. UIAutomator may be empty or in
 
 ## `scrcpy` is missing or does not open
 
-The default session makes one best-effort attempt to start a visible mirror after device selection. Failure is reported as a warning and does not disable ADB tools. Install scrcpy and rerun `npm run check:environment -- --require-scrcpy`; set `ANDROID_DEVICE_MCP_MIRROR_AUTO_START=false` when headless operation is intentional. After `mirror_stop`, call `mirror_start` to reopen it explicitly.
+The default session makes one best-effort attempt to start a visible mirror after device selection. Failure is reported as a warning and does not disable ADB tools. Install scrcpy and rerun `npm run check:environment -- --require-scrcpy`; set `ANDROID_MCP_MIRROR_AUTO_START=false` when headless operation is intentional. After `mirror_stop`, call `mirror_start` to reopen it explicitly.
 
 ## APK installation fails
 
@@ -42,4 +42,4 @@ Run `codex mcp list`, confirm the compiled absolute path, restart Codex, and che
 
 ## Physical tests are skipped
 
-The physical suite requires `ANDROID_DEVICE_MCP_PHYSICAL=1`, a connected authorized device, an explicit test package, and a repeatable harmless selector. It tests the actual MCP stdio protocol. Normal MCP operation does not require `ANDROID_DEVICE_MCP_TEST_PACKAGE`; that variable belongs only to the physical fixture.
+The physical suite requires `ANDROID_MCP_PHYSICAL=1`, a connected authorized device, an explicit test package, and a repeatable harmless selector. It tests the actual MCP stdio protocol. Normal MCP operation does not require `ANDROID_MCP_TEST_PACKAGE`; that variable belongs only to the physical fixture.

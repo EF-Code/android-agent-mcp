@@ -17,16 +17,16 @@ From the repository, `npm run check:environment -- --require-scrcpy` performs th
 
 If the state is `unauthorized`, accept the prompt on the phone. If it is `offline`, reconnect the cable and let the user decide whether to restart ADB. If it is `no permissions`, fix the Linux udev/group configuration deliberately; this server does not modify udev rules or use elevated privileges.
 
-The server will not unlock the phone, enter a PIN/password, dismiss user-consent prompts, or operate a locked device. Normal MCP control permits valid non-sensitive packages by default; use `ANDROID_DEVICE_MCP_ALLOWED_PACKAGES` to narrow the session when desired. Selecting the device makes one best-effort attempt to start the visible scrcpy mirror unless auto-start is disabled; a mirror failure does not block ADB tools.
+The server will not unlock the phone, enter a PIN/password, dismiss user-consent prompts, or operate a locked device. Normal MCP control permits valid non-sensitive packages by default; use `ANDROID_MCP_ALLOWED_PACKAGES` to narrow the session when desired. Selecting the device makes one best-effort attempt to start the visible scrcpy mirror unless auto-start is disabled; a mirror failure does not block ADB tools.
 
 ## Physical test prerequisites
 
 Set explicit inputs before running opt-in physical tests:
 
 ```zsh
-export ANDROID_DEVICE_MCP_PHYSICAL=1
-export ANDROID_DEVICE_MCP_TEST_PACKAGE=com.example.androiddevicetest
-export ANDROID_DEVICE_MCP_TEST_SELECTOR='{"text":"7"}'
+export ANDROID_MCP_PHYSICAL=1
+export ANDROID_MCP_TEST_PACKAGE=com.example.androiddevicetest
+export ANDROID_MCP_TEST_SELECTOR='{"text":"7"}'
 npm run test:physical
 ```
 
