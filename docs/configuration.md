@@ -24,4 +24,6 @@ The server starts with safe defaults and accepts an optional JSON file selected 
 
 The nested `mirror` object supports `maxSize`, `maxFps`, `audio`, and `leaveRunningOnExit`. Mirror defaults are conservative: audio disabled, screen remains on, and ordinary control remains enabled.
 
+`logcat_capture.duration_ms` runs a bounded live logcat capture for that duration. `logcat_capture.since` uses a bounded dump from the supplied logcat timestamp instead; the two modes are mutually exclusive in effect, with `since` taking precedence.
+
 Never put phone PINs, passwords, account credentials, API keys, cookies, or authorization tokens in this file or environment overrides.

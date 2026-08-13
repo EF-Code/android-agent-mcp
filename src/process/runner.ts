@@ -21,6 +21,7 @@ const SAFE_ENVIRONMENT_KEYS = [
 export interface RunOptions {
   timeoutMs: number;
   maxOutputBytes: number;
+  captureDurationMs?: number;
   signal?: AbortSignal;
   secretArgIndexes?: ReadonlySet<number>;
   env?: Record<string, string | undefined>;
@@ -44,8 +45,8 @@ function selectEnvironment(options: RunOptions): NodeJS.ProcessEnv {
   return environment;
 }
 
-function terminateChild(child: ReturnType<typeof spawn>): void {
-  if (child.pid === undefined) return;
+function terminateChild(child: ReturnType<typeof spawn>): NodeJS.Timeout | undefined {
+  if (child.pid === undefined) return undefined;
 
   try {
     if (process.platform === 'win32') child.kill('SIGTERM');
@@ -71,6 +72,7 @@ function terminateChild(child: ReturnType<typeof spawn>): void {
     }
   }, 500);
   forceTimer.unref();
+  return forceTimer;
 }
 
 export async function runCommand(
@@ -83,6 +85,9 @@ export async function runCommand(
   }
   if (options.maxOutputBytes < 1_024 || options.maxOutputBytes > 100_000_000) {
     throw new AppError(ErrorCode.InvalidInput, 'Command output limit is outside the safe range.');
+  }
+  if (options.captureDurationMs !== undefined && (options.captureDurationMs < 0 || options.captureDurationMs > 120_000)) {
+    throw new AppError(ErrorCode.InvalidInput, 'Capture duration is outside the safe range.');
   }
   if (options.signal?.aborted) {
     throw new AppError(ErrorCode.CommandTimeout, 'Command was aborted before it started.', { retryable: true });
@@ -105,6 +110,13 @@ export async function runCommand(
   let failure: AppError | undefined;
   let settled = false;
   let timeout: NodeJS.Timeout | undefined;
+  let captureTimer: NodeJS.Timeout | undefined;
+  let forceTimer: NodeJS.Timeout | undefined;
+  let captureEnded = false;
+
+  const stopChild = (): void => {
+    forceTimer ??= terminateChild(child);
+  };
 
   const record = (exitCode: number | null, signal: NodeJS.Signals | null): CommandRecord => ({
     executable,
@@ -140,13 +152,13 @@ export async function runCommand(
         retryable: true,
         details: { maxOutputBytes: options.maxOutputBytes },
       });
-      terminateChild(child);
+      stopChild();
     }
   };
 
   const abortListener = (): void => {
     failure ??= new AppError(ErrorCode.CommandTimeout, 'Command was aborted.', { retryable: true });
-    terminateChild(child);
+    stopChild();
   };
 
   options.signal?.addEventListener('abort', abortListener, { once: true });
@@ -157,8 +169,14 @@ export async function runCommand(
         retryable: true,
         details: { timeoutMs: options.timeoutMs },
       });
-      terminateChild(child);
+      stopChild();
     }, options.timeoutMs);
+    if (options.captureDurationMs !== undefined) {
+      captureTimer = setTimeout(() => {
+        captureEnded = true;
+        stopChild();
+      }, options.captureDurationMs);
+    }
 
     child.stdout?.on('data', (chunk: Buffer) => append('stdout', chunk));
     child.stderr?.on('data', (chunk: Buffer) => append('stderr', chunk));
@@ -178,6 +196,8 @@ export async function runCommand(
       if (settled) return;
       settled = true;
       if (timeout !== undefined) clearTimeout(timeout);
+      if (captureTimer !== undefined) clearTimeout(captureTimer);
+      if (forceTimer !== undefined) clearTimeout(forceTimer);
       options.signal?.removeEventListener('abort', abortListener);
       const commandRecord = record(exitCode, signal);
 
@@ -195,7 +215,7 @@ export async function runCommand(
         return;
       }
 
-      if (exitCode !== 0) {
+      if (exitCode !== 0 && !captureEnded) {
         reject(
           new AppError(ErrorCode.CommandFailed, `Command exited with code ${exitCode ?? 'unknown'}.`, {
             retryable: false,

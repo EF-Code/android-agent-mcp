@@ -154,6 +154,7 @@ Approval-required tools include `app_install`, `app_clear_data`, and `permission
 - Node IDs are snapshot-local and expire after the configured freshness window or a foreground change.
 - Default text entry is printable ASCII only and rejects password fields.
 - scrcpy audio/control flags are mapped only when supported by the detected version.
+- Logcat duration captures are bounded live reads; `since` selects a bounded timestamp dump.
 - No wireless pairing, multiple-device parallel control, OCR, continuous video MCP frames, root features, iOS, or remote listener is provided.
 
 See [SECURITY.md](SECURITY.md) and the documents under [docs/](docs/) for operational details.

@@ -37,6 +37,17 @@ test('enforces output limits and timeouts', async () => {
   );
 });
 
+test('ends a bounded live capture without turning the intentional stop into an error', async () => {
+  const result = await runCommand(process.execPath, ['-e', 'process.stdout.write("start\\n"); setInterval(() => process.stdout.write("tick\\n"), 10)'], {
+    timeoutMs: 5_000,
+    captureDurationMs: 500,
+    maxOutputBytes: 16_000,
+  });
+  assert.ok(result.stdout.length > 0);
+  assert.ok(result.record.durationMs >= 250);
+  assert.equal(result.record.stdoutTruncated, false);
+});
+
 test('does not invoke a shell for metacharacter arguments', async () => {
   const directory = await mkdtemp(join('/tmp', 'android-device-runner-'));
   const marker = join(directory, 'marker');

@@ -31,6 +31,7 @@ export class AdbClient {
     if (options.secretArgIndexes !== undefined) runOptions.secretArgIndexes = options.secretArgIndexes;
     if (options.env !== undefined) runOptions.env = options.env;
     if (options.environmentKeys !== undefined) runOptions.environmentKeys = options.environmentKeys;
+    if (options.captureDurationMs !== undefined) runOptions.captureDurationMs = options.captureDurationMs;
     return this.runner.run(this.options.adbPath, args, runOptions);
   }
 
