@@ -37,6 +37,7 @@ export class AdbPermissions {
   constructor(
     private readonly adb: AdbClient,
     private readonly packages: AdbPackages,
+    private readonly allowedRuntimePermissions: readonly string[] = [],
   ) {}
 
   async list(serial: string, packageName: string): Promise<PermissionState[]> {
@@ -64,6 +65,15 @@ export class AdbPermissions {
       throw new AppError(
         ErrorCode.ProhibitedOperation,
         'Special access and policy-level permissions are not changeable in version 1.',
+        {
+          details: { permission },
+        },
+      );
+    }
+    if (!this.allowedRuntimePermissions.includes(permission)) {
+      throw new AppError(
+        ErrorCode.ProhibitedOperation,
+        'This runtime permission is not in the host-configured safe permission allowlist.',
         {
           details: { permission },
         },

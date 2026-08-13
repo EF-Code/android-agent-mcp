@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { ErrorCode } from '../../src/errors/codes.js';
 import { AppError } from '../../src/errors/app-error.js';
+import { AdbPermissions } from '../../src/adb/permissions.js';
 import { Policy } from '../../src/policy/policy.js';
 import { isSpecialPermission } from '../../src/adb/permissions.js';
 import {
@@ -83,6 +84,14 @@ test('rejects Android special-access and policy-level permissions', () => {
     assert.equal(isSpecialPermission(permission), true, permission);
   }
   assert.equal(isSpecialPermission('android.permission.CAMERA'), false);
+});
+
+test('requires a host-configured runtime permission allowlist', async () => {
+  const permissions = new AdbPermissions(undefined as never, undefined as never);
+  await assert.rejects(
+    () => permissions.set('serial', 'com.example.app', 'android.permission.CAMERA', 'grant'),
+    (error: unknown) => error instanceof AppError && error.code === ErrorCode.ProhibitedOperation,
+  );
 });
 
 test('rejects unsafe selector regexes and deeply nested relationships', () => {

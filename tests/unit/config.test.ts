@@ -9,10 +9,12 @@ test('loads defaults and applies validated environment overrides', () => {
   const config = loadConfig({
     env: {
       ANDROID_DEVICE_MCP_ALLOWED_PACKAGES: 'com.example.app, com.example.test',
+      ANDROID_DEVICE_MCP_ALLOWED_RUNTIME_PERMISSIONS: 'android.permission.CAMERA',
       ANDROID_DEVICE_MCP_DEFAULT_TIMEOUT_MS: '5000',
     },
   });
   assert.deepEqual(config.allowedPackages, ['com.example.app', 'com.example.test']);
+  assert.deepEqual(config.allowedRuntimePermissions, ['android.permission.CAMERA']);
   assert.equal(config.defaultTimeoutMs, 5_000);
   assert.equal(config.mirror.audio, false);
   assert.equal(config.mirror.leaveRunningOnExit, false);

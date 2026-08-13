@@ -9,6 +9,7 @@ The server starts with safe defaults and accepts an optional JSON file selected 
 | `autoSelectSingleDevice`    | `ANDROID_DEVICE_MCP_AUTO_SELECT`                   | Automatically select exactly one authorized device                            |
 | `allowedPackages`           | `ANDROID_DEVICE_MCP_ALLOWED_PACKAGES`              | Comma-separated package/glob allowlist                                        |
 | `sensitivePackages`         | `ANDROID_DEVICE_MCP_SENSITIVE_PACKAGES`            | Comma-separated package/glob sensitive patterns                               |
+| `allowedRuntimePermissions` | `ANDROID_DEVICE_MCP_ALLOWED_RUNTIME_PERMISSIONS`   | Host-configured narrow allowlist for `pm grant/revoke`; defaults to empty     |
 | `allowedApkRoots`           | `ANDROID_DEVICE_MCP_ALLOWED_APK_ROOTS`             | Comma-separated absolute host directories                                     |
 | `evidenceRoot`              | `ANDROID_DEVICE_MCP_EVIDENCE_ROOT`                 | Absolute evidence directory                                                   |
 | `maxScreenshotBytes`        | `ANDROID_DEVICE_MCP_MAX_SCREENSHOT_BYTES`          | Maximum screenshot size                                                       |

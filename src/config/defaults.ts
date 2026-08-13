@@ -10,6 +10,7 @@ export function defaultConfig(): ServerConfig {
     autoSelectSingleDevice: true,
     allowedPackages: [],
     sensitivePackages: ['com.android.settings', '*.bank.*', '*.wallet.*', '*.password*'],
+    allowedRuntimePermissions: [],
     allowedApkRoots: [join(homedir(), 'projects')],
     evidenceRoot: join(homedir(), 'android-device-mcp-evidence'),
     maxScreenshotBytes: 25_000_000,

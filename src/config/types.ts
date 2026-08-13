@@ -13,6 +13,7 @@ export interface ServerConfig {
   autoSelectSingleDevice: boolean;
   allowedPackages: string[];
   sensitivePackages: string[];
+  allowedRuntimePermissions: string[];
   allowedApkRoots: string[];
   evidenceRoot: string;
   maxScreenshotBytes: number;

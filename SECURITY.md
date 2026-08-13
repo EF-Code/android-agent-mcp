@@ -19,6 +19,7 @@ Android Device MCP controls a USB-debug-authorized phone. That authorization is 
 - explicit device selection when automatic single-device selection is not safe
 - one selected serial per process session; reconnects do not silently switch devices
 - configured package allowlist and sensitive-package patterns
+- empty-by-default host allowlist for runtime permissions that may reach `pm grant/revoke`
 - read-only, interactive, approval-required, and prohibited operation classes
 - no arbitrary `adb shell(command)` tool
 - password UI text redaction and typed-value omission

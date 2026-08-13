@@ -15,6 +15,7 @@ const configInputSchema = z
     autoSelectSingleDevice: z.boolean(),
     allowedPackages: z.array(z.string().min(1)),
     sensitivePackages: z.array(z.string().min(1)),
+    allowedRuntimePermissions: z.array(z.string().regex(/^android\.permission\.[A-Z0-9_]+$/u)),
     allowedApkRoots: z.array(z.string().min(1).refine(isAbsolute, 'must be absolute')),
     evidenceRoot: z.string().min(1).refine(isAbsolute, 'must be absolute'),
     maxScreenshotBytes: z.number().int().min(1_024).max(100_000_000),
@@ -69,6 +70,7 @@ function environmentOverrides(env: NodeJS.ProcessEnv): ConfigInput {
   const overrides: ConfigInput = {};
   const allowedPackages = splitList(env.ANDROID_DEVICE_MCP_ALLOWED_PACKAGES);
   const sensitivePackages = splitList(env.ANDROID_DEVICE_MCP_SENSITIVE_PACKAGES);
+  const allowedRuntimePermissions = splitList(env.ANDROID_DEVICE_MCP_ALLOWED_RUNTIME_PERMISSIONS);
   const allowedApkRoots = splitList(env.ANDROID_DEVICE_MCP_ALLOWED_APK_ROOTS);
 
   if (env.ANDROID_DEVICE_MCP_ADB_PATH !== undefined)
@@ -80,6 +82,8 @@ function environmentOverrides(env: NodeJS.ProcessEnv): ConfigInput {
   }
   if (allowedPackages !== undefined) overrides.allowedPackages = allowedPackages;
   if (sensitivePackages !== undefined) overrides.sensitivePackages = sensitivePackages;
+  if (allowedRuntimePermissions !== undefined)
+    overrides.allowedRuntimePermissions = allowedRuntimePermissions;
   if (allowedApkRoots !== undefined) overrides.allowedApkRoots = allowedApkRoots;
   if (env.ANDROID_DEVICE_MCP_EVIDENCE_ROOT !== undefined)
     overrides.evidenceRoot = env.ANDROID_DEVICE_MCP_EVIDENCE_ROOT;
@@ -175,6 +179,10 @@ export function loadConfig(
     allowedPackages: overrides.allowedPackages ?? input.allowedPackages ?? defaults.allowedPackages,
     sensitivePackages:
       overrides.sensitivePackages ?? input.sensitivePackages ?? defaults.sensitivePackages,
+    allowedRuntimePermissions:
+      overrides.allowedRuntimePermissions ??
+      input.allowedRuntimePermissions ??
+      defaults.allowedRuntimePermissions,
     allowedApkRoots: overrides.allowedApkRoots ?? input.allowedApkRoots ?? defaults.allowedApkRoots,
     evidenceRoot: overrides.evidenceRoot ?? input.evidenceRoot ?? defaults.evidenceRoot,
     maxScreenshotBytes:

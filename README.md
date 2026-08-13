@@ -96,6 +96,7 @@ Example:
   "autoSelectSingleDevice": true,
   "allowedPackages": ["com.example.test"],
   "sensitivePackages": ["com.android.settings", "*.bank.*", "*.wallet.*"],
+  "allowedRuntimePermissions": [],
   "allowedApkRoots": ["/home/user/projects"],
   "evidenceRoot": "/home/user/android-device-mcp-evidence",
   "maxScreenshotBytes": 25000000,

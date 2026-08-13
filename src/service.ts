@@ -92,7 +92,11 @@ export class AndroidDeviceService {
     this.installer = new AdbInstaller(this.adb, config.allowedApkRoots, config.maxApkBytes);
     this.logcat = new AdbLogcat(this.adb, config.maxLogBytes);
     this.packages = new AdbPackages(this.adb);
-    this.permissions = new AdbPermissions(this.adb, this.packages);
+    this.permissions = new AdbPermissions(
+      this.adb,
+      this.packages,
+      config.allowedRuntimePermissions,
+    );
     this.properties = new AdbProperties(this.adb);
     this.screenshots = new AdbScreenshots(this.adb, config.maxScreenshotBytes);
     this.uiAutomator = new AdbUiAutomator(this.adb);
