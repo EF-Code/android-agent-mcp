@@ -59,6 +59,7 @@ export const uiTapSchema = {
   snapshot_id: z.string().min(1).max(128).optional(),
   match_index: z.number().int().min(0).max(100).optional(),
   verify_change: z.boolean().optional(),
+  verify_pixels: z.boolean().optional(),
 };
 
 export const coordinateSchema = {
@@ -66,6 +67,7 @@ export const coordinateSchema = {
   y: z.number().int().min(0).max(100_000),
   coordinate_space: z.literal('device_pixels').optional(),
   verify_change: z.boolean().optional(),
+  verify_pixels: z.boolean().optional(),
 };
 
 export const swipeSchema = {
@@ -76,6 +78,7 @@ export const swipeSchema = {
   direction: z.enum(['up', 'down', 'left', 'right']).optional(),
   duration_ms: z.number().int().min(0).max(30_000).optional(),
   verify_change: z.boolean().optional(),
+  verify_pixels: z.boolean().optional(),
 };
 
 export const keyPressSchema = {

@@ -35,7 +35,7 @@ import {
   uiTapSchema,
   waitForUiSchema,
 } from './schemas.js';
-import { AndroidDeviceService } from '../service.js';
+import { AndroidDeviceService, type ActionObservation } from '../service.js';
 import type { UiSelector } from '../ui/types.js';
 import type { AllowedKey } from '../adb/input.js';
 
@@ -45,6 +45,30 @@ function toSelector(selector: unknown): UiSelector {
 
 function toolError(error: unknown) {
   return errorContent(fail(error));
+}
+
+function verificationData(observation: ActionObservation): Record<string, unknown> {
+  const uiChanged = observation.before !== null && observation.after !== null
+    ? JSON.stringify(observation.before.nodes) !== JSON.stringify(observation.after.nodes)
+    : null;
+  const foregroundChanged = observation.before !== null && observation.after !== null
+    ? observation.before.foreground.packageName !== observation.after.foreground.packageName || observation.before.foreground.activity !== observation.after.foreground.activity
+    : null;
+  const pixelChanged = observation.beforePixelSha256 === null || observation.afterPixelSha256 === null
+    ? null
+    : observation.beforePixelSha256 !== observation.afterPixelSha256;
+  return {
+    before_snapshot_id: observation.before?.snapshotId ?? null,
+    after_snapshot_id: observation.after?.snapshotId ?? null,
+    before_foreground: observation.before?.foreground ?? null,
+    after_foreground: observation.after?.foreground ?? null,
+    ui_changed: uiChanged,
+    foreground_changed: foregroundChanged,
+    pixel_changed: pixelChanged,
+    before_pixel_sha256: observation.beforePixelSha256,
+    after_pixel_sha256: observation.afterPixelSha256,
+    changed: uiChanged,
+  };
 }
 
 function registerTool<Args extends ZodRawShapeCompat>(
@@ -198,13 +222,13 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
       if (requestedNodeId !== undefined && args.snapshot_id === undefined) throw new AppError(ErrorCode.InvalidInput, 'snapshot_id is required when ui_tap uses a snapshot-local node_id.');
       const selector = args.selector === undefined ? { nodeId: requestedNodeId! } : toSelector(args.selector);
       const sourceSnapshot = args.snapshot_id === undefined ? undefined : await service.requireFreshSnapshot(args.snapshot_id);
-      const result = await service.tapSelector(selector, args.match_index, args.verify_change ?? true, sourceSnapshot);
-      return jsonContent(ok({ node_id: result.nodeId, before_snapshot_id: result.before.snapshotId, after_snapshot_id: result.after?.snapshotId ?? null, changed: result.after === null ? null : JSON.stringify(result.before.nodes) !== JSON.stringify(result.after.nodes) }, { deviceSerial: await service.selectedSerial(), warnings: result.after?.warnings ?? result.before.warnings }));
+      const result = await service.tapSelector(selector, args.match_index, args.verify_change ?? true, sourceSnapshot, args.verify_pixels ?? false);
+      return jsonContent(ok({ node_id: result.nodeId, ...verificationData(result) }, { deviceSerial: await service.selectedSerial(), warnings: result.after?.warnings ?? result.before.warnings }));
     } catch (error) { return toolError(error); }
   });
 
   registerTool(server, service, 'screen_tap', { description: 'Tap validated native device-pixel coordinates as a fallback.', inputSchema: coordinateSchema }, async (args) => {
-    try { await service.requireAllowedForeground('screen tap'); const result = await service.tapCoordinates(args.x, args.y, args.verify_change ?? true); return jsonContent(ok({ before_snapshot_id: result.before?.snapshotId ?? null, after_snapshot_id: result.after?.snapshotId ?? null, changed: result.before !== null && result.after !== null && JSON.stringify(result.before.nodes) !== JSON.stringify(result.after.nodes) }, { deviceSerial: await service.selectedSerial() })); } catch (error) { return toolError(error); }
+    try { await service.requireAllowedForeground('screen tap'); const result = await service.tapCoordinates(args.x, args.y, args.verify_change ?? true, args.verify_pixels ?? false); return jsonContent(ok(verificationData(result), { deviceSerial: await service.selectedSerial(), warnings: result.after?.warnings ?? result.before?.warnings ?? [] })); } catch (error) { return toolError(error); }
   });
 
   registerTool(server, service, 'screen_swipe', { description: 'Perform a bounded native coordinate or deterministic directional swipe.', inputSchema: swipeSchema }, async (args) => {
@@ -218,9 +242,10 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
         ...(args.direction === undefined ? {} : { direction: args.direction }),
         ...(args.duration_ms === undefined ? {} : { durationMs: args.duration_ms }),
         verifyChange: args.verify_change ?? true,
+        verifyPixels: args.verify_pixels ?? false,
       };
       const result = await service.swipe(options);
-      return jsonContent(ok({ before_snapshot_id: result.before?.snapshotId ?? null, after_snapshot_id: result.after?.snapshotId ?? null }, { deviceSerial: await service.selectedSerial() }));
+      return jsonContent(ok(verificationData(result), { deviceSerial: await service.selectedSerial(), warnings: result.after?.warnings ?? result.before?.warnings ?? [] }));
     } catch (error) { return toolError(error); }
   });
 

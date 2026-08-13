@@ -27,6 +27,13 @@ import { ScrcpyProcessManager } from './scrcpy/process-manager.js';
 
 const STARTUP_WAIT_MS = 200;
 
+export interface ActionObservation {
+  before: UiSnapshot | null;
+  after: UiSnapshot | null;
+  beforePixelSha256: string | null;
+  afterPixelSha256: string | null;
+}
+
 export class AndroidDeviceService {
   readonly adb: AdbClient;
   readonly devices: DeviceManager;
@@ -174,6 +181,11 @@ export class AndroidDeviceService {
     });
   }
 
+  private async pixelDigest(): Promise<string> {
+    await this.requireCaptureForeground('pixel verification');
+    return (await this.screenshots.capture(await this.selectedSerial())).sha256;
+  }
+
   async captureLogcat(serial: string, options: Omit<LogCaptureOptions, 'signal'> = {}): Promise<Awaited<ReturnType<AdbLogcat['capture']>>> {
     const controller = new AbortController();
     this.activeLogControllers.add(controller);
@@ -214,10 +226,11 @@ export class AndroidDeviceService {
     });
   }
 
-  async tapSelector(selector: UiSelector, matchIndex?: number, verifyChange = true, sourceSnapshot?: UiSnapshot): Promise<{ before: UiSnapshot; after: UiSnapshot | null; nodeId: string }> {
+  async tapSelector(selector: UiSelector, matchIndex?: number, verifyChange = true, sourceSnapshot?: UiSnapshot, verifyPixels = false): Promise<{ before: UiSnapshot; after: UiSnapshot | null; nodeId: string; beforePixelSha256: string | null; afterPixelSha256: string | null }> {
     const serial = await this.selectedSerial();
     const foreground = await this.requireAllowedForeground('semantic tap');
     const before = sourceSnapshot === undefined ? await this.captureUi() : await this.requireFreshSnapshot(sourceSnapshot.snapshotId);
+    const beforePixelSha256 = verifyPixels ? await this.pixelDigest() : null;
     this.policy.assertForegroundAllowed(before.foreground, 'semantic tap');
     if (before.foreground.packageName !== foreground.packageName || before.foreground.activity !== foreground.activity) {
       throw new AppError(ErrorCode.StaleUiSnapshot, 'Foreground changed while preparing the semantic tap.', {
@@ -238,10 +251,11 @@ export class AndroidDeviceService {
     await this.input.tap(serial, match.node.center.x, match.node.center.y);
     await this.stabilize();
     const after = verifyChange ? await this.captureUi() : null;
-    return { before, after, nodeId: match.node.nodeId };
+    const afterPixelSha256 = verifyPixels ? await this.pixelDigest() : null;
+    return { before, after, nodeId: match.node.nodeId, beforePixelSha256, afterPixelSha256 };
   }
 
-  async tapCoordinates(x: number, y: number, verifyChange: boolean): Promise<{ before: UiSnapshot | null; after: UiSnapshot | null }> {
+  async tapCoordinates(x: number, y: number, verifyChange: boolean, verifyPixels = false): Promise<ActionObservation> {
     const serial = await this.selectedSerial();
     await this.requireAllowedForeground('screen tap');
     const observation = await this.screenObservation(serial);
@@ -253,13 +267,15 @@ export class AndroidDeviceService {
       });
     }
     const before = verifyChange ? await this.captureUi() : null;
+    const beforePixelSha256 = verifyPixels ? await this.pixelDigest() : null;
     await this.input.tap(serial, x, y);
     await this.stabilize();
     const after = verifyChange ? await this.captureUi() : null;
-    return { before, after };
+    const afterPixelSha256 = verifyPixels ? await this.pixelDigest() : null;
+    return { before, after, beforePixelSha256, afterPixelSha256 };
   }
 
-  async swipe(options: { startX?: number; startY?: number; endX?: number; endY?: number; direction?: string; durationMs?: number; verifyChange: boolean }): Promise<{ before: UiSnapshot | null; after: UiSnapshot | null }> {
+  async swipe(options: { startX?: number; startY?: number; endX?: number; endY?: number; direction?: string; durationMs?: number; verifyChange: boolean; verifyPixels?: boolean }): Promise<ActionObservation> {
     const serial = await this.selectedSerial();
     await this.requireAllowedForeground('screen swipe');
     const observation = await this.screenObservation(serial);
@@ -287,10 +303,12 @@ export class AndroidDeviceService {
       throw new AppError(ErrorCode.InvalidCoordinates, 'Swipe coordinates are outside display bounds.');
     }
     const before = options.verifyChange ? await this.captureUi() : null;
+    const beforePixelSha256 = options.verifyPixels === true ? await this.pixelDigest() : null;
     await this.input.swipe(serial, startX!, startY!, endX!, endY!, validateDuration(options.durationMs ?? 300, 'durationMs', 30_000));
     await this.stabilize();
     const after = options.verifyChange ? await this.captureUi() : null;
-    return { before, after };
+    const afterPixelSha256 = options.verifyPixels === true ? await this.pixelDigest() : null;
+    return { before, after, beforePixelSha256, afterPixelSha256 };
   }
 
   async longPress(x: number, y: number, durationMs: number): Promise<void> {
