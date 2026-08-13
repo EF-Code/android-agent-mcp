@@ -70,6 +70,10 @@ function isRunning(owner: OwnedScrcpy | null): owner is OwnedScrcpy {
   );
 }
 
+function sameArguments(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
 function terminate(owner: OwnedScrcpy): void {
   try {
     if (process.platform === 'win32') owner.child.kill('SIGTERM');
@@ -111,9 +115,16 @@ export class ScrcpyProcessManager {
     options: ScrcpyStartOptions,
   ): Promise<{ alreadyRunning: boolean; status: ScrcpyStatus }> {
     validateSerial(serial);
-    if (isRunning(this.owner)) return { alreadyRunning: true, status: this.status() };
-    this.capabilities = await detectScrcpyCapabilities(this.scrcpyPath, this.runner?.run);
-    const args = buildScrcpyArgs(serial, options, this.capabilities);
+    const capabilities =
+      this.capabilities ?? (await detectScrcpyCapabilities(this.scrcpyPath, this.runner?.run));
+    const args = buildScrcpyArgs(serial, options, capabilities);
+    if (isRunning(this.owner)) {
+      if (this.owner.serial === serial && sameArguments(this.owner.args, args)) {
+        return { alreadyRunning: true, status: this.status() };
+      }
+      await this.stop();
+    }
+    this.capabilities = capabilities;
     const child = spawn(this.scrcpyPath, args, {
       shell: false,
       detached: process.platform !== 'win32',
