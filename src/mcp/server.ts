@@ -60,12 +60,13 @@ function registerReadOnlyTools(server: McpServer, service: AndroidDeviceService)
     try {
       const serial = await service.selectedSerial();
       const screenshot = await service.screenshots.capture(serial);
+      const observation = await service.screenObservation(serial);
       let evidenceDigest: unknown = null;
       if (args.save_to_evidence === true) {
         const session = service.evidence.requireActive();
         evidenceDigest = await session.saveScreenshot(args.label ?? 'screen', screenshot.png);
       }
-      const result = ok({ width: screenshot.width, height: screenshot.height, sha256: screenshot.sha256, evidence: evidenceDigest }, { deviceSerial: serial });
+      const result = ok({ width: screenshot.width, height: screenshot.height, rotation: observation.display.rotation, foreground: observation.foreground, sha256: screenshot.sha256, evidence: evidenceDigest }, { deviceSerial: serial });
       return imageContent(result, screenshot.png);
     } catch (error) { return toolError(error); }
   });
