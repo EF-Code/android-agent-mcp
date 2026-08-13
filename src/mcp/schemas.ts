@@ -102,19 +102,16 @@ export const appListSchema = {
 export const installSchema = {
   path: z.string().min(1),
   replace: z.boolean().optional(),
-  approved: z.boolean().optional(),
 };
 
 export const clearDataSchema = {
   package_name: z.string().min(1).max(255),
-  approved: z.boolean().optional(),
 };
 
 export const permissionSetSchema = {
   package_name: z.string().min(1).max(255),
   permission: z.string().min(1).max(255),
   action: z.enum(['grant', 'revoke']),
-  approved: z.boolean().optional(),
 };
 
 export const logCaptureSchema = {

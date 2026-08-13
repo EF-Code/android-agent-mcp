@@ -234,15 +234,15 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
 
 function registerMutationTools(server: McpServer, service: AndroidDeviceService): void {
   server.registerTool('app_install', { description: 'Approval-required installation of an APK under an allowed host root.', inputSchema: installSchema }, async (args) => {
-    try { service.policy.assertApproval(args.approved, 'app_install'); const serial = await service.selectedSerial(); const apk = await service.installer.validate(args.path); return jsonContent(ok(await service.installer.install(serial, apk, args.replace ?? false), { deviceSerial: serial })); } catch (error) { return toolError(error); }
+    try { service.policy.assertMutationAllowed('app_install'); const serial = await service.selectedSerial(); const apk = await service.installer.validate(args.path); return jsonContent(ok(await service.installer.install(serial, apk, args.replace ?? false), { deviceSerial: serial })); } catch (error) { return toolError(error); }
   });
 
   server.registerTool('app_clear_data', { description: 'Approval-required irreversible clearing of local data for an allowlisted test package.', inputSchema: clearDataSchema }, async (args) => {
-    try { service.policy.assertApproval(args.approved, 'app_clear_data'); service.policy.assertPackageAllowed(args.package_name); const serial = await service.selectedSerial(); const output = await service.packages.clearData(serial, args.package_name); return jsonContent(ok({ package_name: args.package_name, output, irreversible: true }, { deviceSerial: serial })); } catch (error) { return toolError(error); }
+    try { service.policy.assertMutationAllowed('app_clear_data'); service.policy.assertPackageAllowed(args.package_name); const serial = await service.selectedSerial(); const output = await service.packages.clearData(serial, args.package_name); return jsonContent(ok({ package_name: args.package_name, output, irreversible: true }, { deviceSerial: serial })); } catch (error) { return toolError(error); }
   });
 
   server.registerTool('permissions_set', { description: 'Approval-required grant or revoke of a requested runtime permission.', inputSchema: permissionSetSchema }, async (args) => {
-    try { service.policy.assertApproval(args.approved, 'permissions_set'); service.policy.assertPackageAllowed(args.package_name); const serial = await service.selectedSerial(); await service.permissions.set(serial, args.package_name, args.permission, args.action); return jsonContent(ok({ package_name: args.package_name, permission: args.permission, action: args.action }, { deviceSerial: serial })); } catch (error) { return toolError(error); }
+    try { service.policy.assertMutationAllowed('permissions_set'); service.policy.assertPackageAllowed(args.package_name); const serial = await service.selectedSerial(); await service.permissions.set(serial, args.package_name, args.permission, args.action); return jsonContent(ok({ package_name: args.package_name, permission: args.permission, action: args.action }, { deviceSerial: serial })); } catch (error) { return toolError(error); }
   });
 }
 

@@ -38,7 +38,7 @@ Restart the Codex client after adding or changing an MCP server. Verify the conn
 
 ## Approval behavior
 
-The server independently enforces approval-required operations through `approvalMode` and an `approved: true` argument. Codex tool approval configuration is an additional client-side control. Keep the Codex default tool approval mode at `writes` or stricter for normal use.
+The server independently enforces approval-required operations through the host-configured `approvalMode`. Mutation tools do not accept a model-supplied `approved` argument: ordinary tool input cannot authorize a destructive operation. The default `prompt` mode is fail-closed because this local server cannot treat model text as user approval. Set `ANDROID_DEVICE_MCP_APPROVAL_MODE=allow` only in a deliberately trusted host session, and keep Codex tool approval at `writes` or stricter as an additional client-side control.
 
 ## Current official reference
 

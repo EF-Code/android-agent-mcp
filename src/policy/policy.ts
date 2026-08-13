@@ -36,7 +36,7 @@ export class Policy {
     }
   }
 
-  assertApproval(approved: boolean | undefined, operation: string): void {
+  assertMutationAllowed(operation: string): void {
     if (this.config.approvalMode === 'allow') {
       return;
     }
@@ -47,11 +47,14 @@ export class Policy {
       });
     }
 
-    if (approved !== true) {
-      throw new AppError(ErrorCode.ApprovalRequired, `Explicit approval is required for: ${operation}.`, {
-        details: { operation, approvalMode: this.config.approvalMode },
-      });
-    }
+    throw new AppError(ErrorCode.ApprovalRequired, `Host approval is required for: ${operation}.`, {
+      retryable: true,
+      details: {
+        operation,
+        approvalMode: this.config.approvalMode,
+        mechanism: 'host-configured-approval-mode',
+      },
+    });
   }
 
   canRecordPackage(packageName: string | null): boolean {

@@ -17,13 +17,14 @@ test('redacts common credentials, emails, and password node text', () => {
   assert.equal(redactUiText('visible', false), 'visible');
 });
 
-test('enforces package allowlist, sensitive patterns, and explicit approval', () => {
+test('enforces package allowlist, sensitive patterns, and host mutation approval', () => {
   const config = { ...defaultConfig(), allowedPackages: ['com.example.*'] };
   const policy = new Policy(config);
   assert.doesNotThrow(() => policy.assertPackageAllowed('com.example.app'));
   assert.throws(() => policy.assertPackageAllowed('com.other.app'), (error: unknown) => error instanceof AppError && error.code === ErrorCode.PackageNotAllowed);
   assert.throws(() => policy.assertPackageAllowed('com.android.settings'), (error: unknown) => error instanceof AppError && error.code === ErrorCode.SensitivePackage);
-  assert.throws(() => policy.assertApproval(false, 'app_install'), (error: unknown) => error instanceof AppError && error.code === ErrorCode.ApprovalRequired);
+  assert.throws(() => policy.assertMutationAllowed('app_install'), (error: unknown) => error instanceof AppError && error.code === ErrorCode.ApprovalRequired);
+  assert.doesNotThrow(() => new Policy({ ...config, approvalMode: 'allow' }).assertMutationAllowed('app_install'));
 });
 
 test('rejects unsafe selector regexes and deeply nested relationships', () => {

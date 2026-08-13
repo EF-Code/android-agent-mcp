@@ -35,7 +35,7 @@ The default text tool supports only printable ASCII test values and rejects focu
 
 ## Mutations
 
-APK installation, runtime permission changes, and clear-data require explicit approval under the default `prompt` policy. Clear-data removes local application data and is intentionally not automatically used as a repair step. The server never uninstalls an existing package to work around a signature mismatch.
+APK installation, runtime permission changes, and clear-data are fail-closed under the default `prompt` policy. Mutation tools have no model-controlled approval Boolean; only a host-configured `approvalMode=allow` can enable them, with the MCP client's write approval as an additional control. Clear-data removes local application data and is intentionally not automatically used as a repair step. The server never uninstalls an existing package to work around a signature mismatch.
 
 Power, wake, special-access permissions, factory reset, reboot/bootloader, flashing, rooting, certificate installation, security policy changes, SMS, calls, payments, account deletion, token extraction, and arbitrary shell execution are prohibited or unavailable.
 

@@ -19,7 +19,7 @@ The server starts with safe defaults and accepts an optional JSON file selected 
 | `maxEvidenceFiles` | `ANDROID_DEVICE_MCP_MAX_EVIDENCE_FILES` | Evidence file budget |
 | `defaultTimeoutMs` | `ANDROID_DEVICE_MCP_DEFAULT_TIMEOUT_MS` | Default ADB command timeout |
 | `uiSnapshotMaxAgeMs` | `ANDROID_DEVICE_MCP_UI_SNAPSHOT_MAX_AGE_MS` | Semantic snapshot freshness window |
-| `approvalMode` | `ANDROID_DEVICE_MCP_APPROVAL_MODE` | `prompt`, `allow`, or `deny` |
+| `approvalMode` | `ANDROID_DEVICE_MCP_APPROVAL_MODE` | Host policy: `prompt` (fail closed), `allow`, or `deny` |
 
 The nested `mirror` object supports `maxSize`, `maxFps`, `audio`, and `leaveRunningOnExit`. Mirror defaults are conservative: audio disabled, screen remains on, and ordinary control remains enabled.
 
