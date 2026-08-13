@@ -1,10 +1,12 @@
+import { ErrorCode } from '../errors/codes.js';
+import { AppError } from '../errors/app-error.js';
 import { AdbClient } from './client.js';
 
 export interface PackageSummary {
   packageName: string;
-  thirdParty: boolean;
-  system: boolean;
-  enabled: boolean;
+  thirdParty: boolean | null;
+  system: boolean | null;
+  enabled: boolean | null;
 }
 
 export interface PackageInfo {
@@ -19,11 +21,25 @@ export interface PackageInfo {
   debuggable: boolean | null;
 }
 
-function parsePackageLines(output: string): string[] {
+export interface PackageEntry {
+  packageName: string;
+  sourcePath: string | null;
+}
+
+export function parsePackageEntries(output: string): PackageEntry[] {
   return output
     .split(/\r?\n/u)
     .map((line) => line.replace(/^package:/u, '').trim())
-    .filter((line) => /^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+$/.test(line));
+    .flatMap((line) => {
+      const separator = line.lastIndexOf('=');
+      const packageName = (separator < 0 ? line : line.slice(separator + 1)).trim();
+      if (!/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+$/.test(packageName)) return [];
+      return [{ packageName, sourcePath: separator < 0 ? null : line.slice(0, separator) || null }];
+    });
+}
+
+function parsePackageLines(output: string): string[] {
+  return parsePackageEntries(output).map((entry) => entry.packageName);
 }
 
 function firstMatch(output: string, pattern: RegExp): string | null {
@@ -37,19 +53,37 @@ export class AdbPackages {
     serial: string,
     options: { thirdParty?: boolean; system?: boolean; enabled?: boolean; disabled?: boolean; limit?: number } = {},
   ): Promise<PackageSummary[]> {
-    const args = ['pm', 'list', 'packages'];
-    if (options.thirdParty === true) args.push('-3');
-    if (options.system === true) args.push('-s');
-    if (options.enabled === true) args.push('-e');
-    if (options.disabled === true) args.push('-d');
-    const output = await this.adb.text(this.adb.shell(serial, args, { timeoutMs: 20_000, maxOutputBytes: 2_000_000 }));
-    const packageNames = parsePackageLines(output).slice(0, options.limit ?? 2_000);
-    return packageNames.map((packageName) => ({
-      packageName,
-      thirdParty: options.thirdParty === true,
-      system: options.system === true,
-      enabled: options.disabled !== true,
-    }));
+    if (options.enabled === true && options.disabled === true) {
+      throw new AppError(ErrorCode.InvalidInput, 'app.list cannot request both enabled and disabled packages.');
+    }
+    if (options.thirdParty === true && options.system === true) {
+      throw new AppError(ErrorCode.InvalidInput, 'app.list cannot request both third-party and system packages.');
+    }
+
+    const command = (flags: string[]): Promise<string> => this.adb.text(this.adb.shell(serial, ['pm', 'list', 'packages', ...flags], { timeoutMs: 20_000, maxOutputBytes: 2_000_000 }));
+    const [allOutput, thirdPartyOutput, systemOutput, enabledOutput, disabledOutput] = await Promise.all([
+      command(['-f']),
+      command(['-3']),
+      command(['-s']),
+      command(['-e']),
+      command(['-d']),
+    ]);
+    const thirdParty = new Set(parsePackageLines(thirdPartyOutput));
+    const system = new Set(parsePackageLines(systemOutput));
+    const enabled = new Set(parsePackageLines(enabledOutput));
+    const disabled = new Set(parsePackageLines(disabledOutput));
+    return parsePackageEntries(allOutput)
+      .map(({ packageName }) => ({
+        packageName,
+        thirdParty: thirdParty.has(packageName) ? true : system.has(packageName) ? false : null,
+        system: system.has(packageName) ? true : thirdParty.has(packageName) ? false : null,
+        enabled: enabled.has(packageName) ? true : disabled.has(packageName) ? false : null,
+      }))
+      .filter((entry) => options.thirdParty === undefined || entry.thirdParty === options.thirdParty)
+      .filter((entry) => options.system === undefined || entry.system === options.system)
+      .filter((entry) => options.enabled === undefined || entry.enabled === options.enabled)
+      .filter((entry) => options.disabled === undefined || (options.disabled ? entry.enabled === false : entry.enabled !== false))
+      .slice(0, options.limit ?? 2_000);
   }
 
   async info(serial: string, packageName: string): Promise<PackageInfo> {
