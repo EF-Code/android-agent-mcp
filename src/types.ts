@@ -98,5 +98,6 @@ export interface DisplayInfo {
 export interface ScreenObservation {
   display: DisplayInfo;
   foreground: ForegroundApp;
+  screenshotSha256?: string;
   observedAt: string;
 }
