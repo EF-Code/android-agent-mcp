@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { ErrorCode } from '../errors/codes.js';
 import { AppError } from '../errors/app-error.js';
 import { defaultConfig } from './defaults.js';
-import type { ServerConfig } from './types.js';
+import type { MirrorConfig, ServerConfig } from './types.js';
 
 const configInputSchema = z
   .object({
@@ -135,14 +135,34 @@ export function loadConfig(options: { configPath?: string; env?: NodeJS.ProcessE
   const overrides = validateInput(environmentOverrides(env));
   const defaults = defaultConfig();
 
+  const mirror: MirrorConfig = {
+    maxSize: overrides.mirror?.maxSize ?? input.mirror?.maxSize ?? defaults.mirror.maxSize,
+    maxFps: overrides.mirror?.maxFps ?? input.mirror?.maxFps ?? defaults.mirror.maxFps,
+    audio: overrides.mirror?.audio ?? input.mirror?.audio ?? defaults.mirror.audio,
+    leaveRunningOnExit:
+      overrides.mirror?.leaveRunningOnExit ?? input.mirror?.leaveRunningOnExit ?? defaults.mirror.leaveRunningOnExit,
+  };
+
   return {
-    ...defaults,
-    ...input,
-    ...overrides,
-    mirror: {
-      ...defaults.mirror,
-      ...(input.mirror ?? {}),
-      ...(overrides.mirror ?? {}),
-    },
+    adbPath: overrides.adbPath ?? input.adbPath ?? defaults.adbPath,
+    scrcpyPath: overrides.scrcpyPath ?? input.scrcpyPath ?? defaults.scrcpyPath,
+    autoSelectSingleDevice:
+      overrides.autoSelectSingleDevice ?? input.autoSelectSingleDevice ?? defaults.autoSelectSingleDevice,
+    allowedPackages: overrides.allowedPackages ?? input.allowedPackages ?? defaults.allowedPackages,
+    sensitivePackages: overrides.sensitivePackages ?? input.sensitivePackages ?? defaults.sensitivePackages,
+    allowedApkRoots: overrides.allowedApkRoots ?? input.allowedApkRoots ?? defaults.allowedApkRoots,
+    evidenceRoot: overrides.evidenceRoot ?? input.evidenceRoot ?? defaults.evidenceRoot,
+    maxScreenshotBytes: overrides.maxScreenshotBytes ?? input.maxScreenshotBytes ?? defaults.maxScreenshotBytes,
+    maxLogBytes: overrides.maxLogBytes ?? input.maxLogBytes ?? defaults.maxLogBytes,
+    maxCommandOutputBytes:
+      overrides.maxCommandOutputBytes ?? input.maxCommandOutputBytes ?? defaults.maxCommandOutputBytes,
+    maxEvidenceBytes: overrides.maxEvidenceBytes ?? input.maxEvidenceBytes ?? defaults.maxEvidenceBytes,
+    maxEvidenceFiles: overrides.maxEvidenceFiles ?? input.maxEvidenceFiles ?? defaults.maxEvidenceFiles,
+    defaultTimeoutMs: overrides.defaultTimeoutMs ?? input.defaultTimeoutMs ?? defaults.defaultTimeoutMs,
+    uiSnapshotMaxAgeMs: overrides.uiSnapshotMaxAgeMs ?? input.uiSnapshotMaxAgeMs ?? defaults.uiSnapshotMaxAgeMs,
+    approvalMode: overrides.approvalMode ?? input.approvalMode ?? defaults.approvalMode,
+    leaveScrcpyRunningOnExit:
+      overrides.leaveScrcpyRunningOnExit ?? input.leaveScrcpyRunningOnExit ?? defaults.leaveScrcpyRunningOnExit,
+    mirror,
   };
 }
