@@ -74,18 +74,22 @@ function booleanEnv(value: string | undefined): boolean | undefined {
   return undefined;
 }
 
-function environmentValue(
-  env: NodeJS.ProcessEnv,
-  canonicalName: string,
-  legacyName: string,
-): string | undefined {
-  return env[canonicalName] ?? env[legacyName];
+function environmentValue(env: NodeJS.ProcessEnv, ...names: string[]): string | undefined {
+  for (const name of names) {
+    if (env[name] !== undefined) return env[name];
+  }
+  return undefined;
 }
 
 function environmentOverrides(env: NodeJS.ProcessEnv): ConfigInput {
   const overrides: ConfigInput = {};
   const value = (name: string): string | undefined =>
-    environmentValue(env, `ANDROID_MCP_${name}`, `ANDROID_DEVICE_MCP_${name}`);
+    environmentValue(
+      env,
+      `ANDROID_AGENT_MCP_${name}`,
+      `ANDROID_MCP_${name}`,
+      `ANDROID_DEVICE_MCP_${name}`,
+    );
   const allowedPackages = splitList(value('ALLOWED_PACKAGES'));
   const sensitivePackages = splitList(value('SENSITIVE_PACKAGES'));
   const allowedRuntimePermissions = splitList(value('ALLOWED_RUNTIME_PERMISSIONS'));
@@ -176,7 +180,13 @@ export function loadConfig(
 ): ServerConfig {
   const env = options.env ?? process.env;
   const configPath =
-    options.configPath ?? environmentValue(env, 'ANDROID_MCP_CONFIG', 'ANDROID_DEVICE_MCP_CONFIG');
+    options.configPath ??
+    environmentValue(
+      env,
+      'ANDROID_AGENT_MCP_CONFIG',
+      'ANDROID_MCP_CONFIG',
+      'ANDROID_DEVICE_MCP_CONFIG',
+    );
   const fileConfig = configPath === undefined ? {} : readJsonConfig(configPath);
   const input = validateInput(fileConfig);
   const overrides = validateInput(environmentOverrides(env));

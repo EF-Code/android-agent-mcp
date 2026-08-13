@@ -1,6 +1,6 @@
 import { AdbClient } from './client.js';
 
-const REMOTE_DUMP_PATH = '/sdcard/android_mcp_ui.xml';
+const REMOTE_DUMP_PATH = '/sdcard/android_agent_mcp_ui.xml';
 
 export class AdbUiAutomator {
   constructor(private readonly adb: AdbClient) {}

@@ -26,7 +26,7 @@ const device: DeviceInfo = {
 };
 
 test('creates sanitized evidence manifest and summary', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'android-mcp-'));
+  const root = await mkdtemp(join(tmpdir(), 'android-agent-mcp-'));
   const manager = new EvidenceManager(root, 1_000_000, 20);
   const session = await manager.begin(
     {
@@ -46,13 +46,13 @@ test('creates sanitized evidence manifest and summary', async () => {
   assert.ok(!manifest.includes('secret-value'));
   assert.ok(summary.files.length >= 2);
   const summaryText = await readFile(summary.summaryPath, 'utf8');
-  assert.ok(summaryText.includes('# Android MCP Evidence'));
+  assert.ok(summaryText.includes('# Android Agent MCP Evidence'));
   assert.ok(summaryText.includes('including this summary'));
   assert.ok(summaryText.includes('self-referential digest'));
 });
 
 test('prevents a second active evidence session', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'android-mcp-'));
+  const root = await mkdtemp(join(tmpdir(), 'android-agent-mcp-'));
   const manager = new EvidenceManager(root, 1_000_000, 20);
   await manager.begin(
     { serverVersion: 'test', adbVersion: null, scrcpyVersion: null, device },
@@ -68,7 +68,7 @@ test('prevents a second active evidence session', async () => {
 });
 
 test('pauses recording and digests action and summary files', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'android-mcp-'));
+  const root = await mkdtemp(join(tmpdir(), 'android-agent-mcp-'));
   const manager = new EvidenceManager(root, 1_000_000, 20);
   const session = await manager.begin(
     { serverVersion: 'test', adbVersion: null, scrcpyVersion: null, device },
@@ -88,7 +88,7 @@ test('pauses recording and digests action and summary files', async () => {
 });
 
 test('prunes only expired evidence directories below the configured root', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'android-mcp-'));
+  const root = await mkdtemp(join(tmpdir(), 'android-agent-mcp-'));
   const oldDirectory = join(root, 'old-session');
   await mkdir(oldDirectory);
   const oldDate = new Date(Date.now() - 10_000);
@@ -103,8 +103,8 @@ test('prunes only expired evidence directories below the configured root', async
 });
 
 test('rejects evidence artifact parents that resolve outside the session directory', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'android-mcp-'));
-  const outside = await mkdtemp(join(tmpdir(), 'android-mcp-outside-'));
+  const root = await mkdtemp(join(tmpdir(), 'android-agent-mcp-'));
+  const outside = await mkdtemp(join(tmpdir(), 'android-agent-mcp-outside-'));
   const manager = new EvidenceManager(root, 1_000_000, 20);
   const session = await manager.begin(
     { serverVersion: 'test', adbVersion: null, scrcpyVersion: null, device },

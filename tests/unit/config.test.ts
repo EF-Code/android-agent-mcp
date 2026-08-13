@@ -8,9 +8,9 @@ import { loadConfig } from '../../src/config/loader.js';
 test('loads defaults and applies validated environment overrides', () => {
   const config = loadConfig({
     env: {
-      ANDROID_MCP_ALLOWED_PACKAGES: 'com.example.app, com.example.test',
-      ANDROID_MCP_ALLOWED_RUNTIME_PERMISSIONS: 'android.permission.CAMERA',
-      ANDROID_MCP_DEFAULT_TIMEOUT_MS: '5000',
+      ANDROID_AGENT_MCP_ALLOWED_PACKAGES: 'com.example.app, com.example.test',
+      ANDROID_AGENT_MCP_ALLOWED_RUNTIME_PERMISSIONS: 'android.permission.CAMERA',
+      ANDROID_AGENT_MCP_DEFAULT_TIMEOUT_MS: '5000',
     },
   });
   assert.deepEqual(config.allowedPackages, ['com.example.app', 'com.example.test']);
@@ -31,14 +31,14 @@ test('defaults to broad non-sensitive package control and visible mirroring', ()
 
 test('allows mirror auto-start to be disabled explicitly', () => {
   const config = loadConfig({
-    env: { ANDROID_MCP_MIRROR_AUTO_START: 'false' },
+    env: { ANDROID_AGENT_MCP_MIRROR_AUTO_START: 'false' },
   });
   assert.equal(config.mirror.autoStart, false);
 });
 
 test('allows a deliberate empty sensitive-package policy override', () => {
   const config = loadConfig({
-    env: { ANDROID_MCP_SENSITIVE_PACKAGES: '' },
+    env: { ANDROID_AGENT_MCP_SENSITIVE_PACKAGES: '' },
   });
   assert.deepEqual(config.sensitivePackages, []);
 });
@@ -60,13 +60,13 @@ test('applies file config before environment overrides', async () => {
   );
   const config = loadConfig({
     configPath,
-    env: { ANDROID_MCP_ALLOWED_PACKAGES: 'com.env.app' },
+    env: { ANDROID_AGENT_MCP_ALLOWED_PACKAGES: 'com.env.app' },
   });
   assert.deepEqual(config.allowedPackages, ['com.env.app']);
   assert.equal(config.defaultTimeoutMs, 8_000);
 });
 
-test('supports legacy environment aliases with canonical values taking precedence', () => {
+test('supports both legacy environment prefixes with canonical values taking precedence', () => {
   const legacy = loadConfig({
     env: {
       ANDROID_DEVICE_MCP_ALLOWED_PACKAGES: 'com.legacy.app',
@@ -76,16 +76,29 @@ test('supports legacy environment aliases with canonical values taking precedenc
   assert.deepEqual(legacy.allowedPackages, ['com.legacy.app']);
   assert.equal(legacy.defaultTimeoutMs, 7_000);
 
-  const canonical = loadConfig({
+  const previous = loadConfig({
     env: {
-      ANDROID_MCP_ALLOWED_PACKAGES: 'com.canonical.app',
+      ANDROID_MCP_ALLOWED_PACKAGES: 'com.previous.app',
       ANDROID_DEVICE_MCP_ALLOWED_PACKAGES: 'com.legacy.app',
       ANDROID_MCP_DEFAULT_TIMEOUT_MS: '6000',
       ANDROID_DEVICE_MCP_DEFAULT_TIMEOUT_MS: '7000',
     },
   });
+  assert.deepEqual(previous.allowedPackages, ['com.previous.app']);
+  assert.equal(previous.defaultTimeoutMs, 6_000);
+
+  const canonical = loadConfig({
+    env: {
+      ANDROID_AGENT_MCP_ALLOWED_PACKAGES: 'com.canonical.app',
+      ANDROID_MCP_ALLOWED_PACKAGES: 'com.previous.app',
+      ANDROID_DEVICE_MCP_ALLOWED_PACKAGES: 'com.legacy.app',
+      ANDROID_AGENT_MCP_DEFAULT_TIMEOUT_MS: '5000',
+      ANDROID_MCP_DEFAULT_TIMEOUT_MS: '6000',
+      ANDROID_DEVICE_MCP_DEFAULT_TIMEOUT_MS: '7000',
+    },
+  });
   assert.deepEqual(canonical.allowedPackages, ['com.canonical.app']);
-  assert.equal(canonical.defaultTimeoutMs, 6_000);
+  assert.equal(canonical.defaultTimeoutMs, 5_000);
 });
 
 test('rejects relative APK roots in config', async () => {
