@@ -13,6 +13,7 @@ export function defaultConfig(): ServerConfig {
     allowedApkRoots: [join(homedir(), 'projects')],
     evidenceRoot: join(homedir(), 'android-device-mcp-evidence'),
     maxScreenshotBytes: 25_000_000,
+    maxApkBytes: 500_000_000,
     maxLogBytes: 2_000_000,
     maxCommandOutputBytes: 4_000_000,
     maxEvidenceBytes: 100_000_000,
