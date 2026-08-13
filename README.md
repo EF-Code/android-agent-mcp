@@ -133,6 +133,8 @@ Environment overrides use the `ANDROID_DEVICE_MCP_` prefix. Lists are comma-sepa
 
 If the selected phone disconnects or becomes unauthorized, the server invalidates retained UI state and requires an explicit `device_select` again after reconnecting, even when the serial is unchanged.
 
+The server also finalizes an active evidence session during graceful shutdown after cleaning up its owned scrcpy process.
+
 No generic shell tool is exposed.
 
 ## Tests

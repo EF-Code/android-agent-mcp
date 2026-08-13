@@ -16,3 +16,5 @@ Semantic node IDs are valid only for the snapshot that produced them. A fresh po
 Semantic and coordinate actions return hierarchy and foreground/activity change signals separately. Pass `verify_pixels: true` when an additional bounded before/after screenshot SHA-256 comparison is needed; a pixel digest is an observation signal, not proof of business success.
 
 Evidence is explicit and bounded. It is not a surveillance or continuous recording feature. Treat evidence directories as sensitive even after pattern-based redaction.
+
+If the MCP process shuts down while evidence is active, the server finalizes that session after cleaning up its owned scrcpy process.

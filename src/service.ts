@@ -112,7 +112,11 @@ export class AndroidDeviceService {
 
   async close(): Promise<void> {
     for (const controller of this.activeLogControllers) controller.abort();
-    await this.scrcpy.dispose();
+    try {
+      await this.scrcpy.dispose();
+    } finally {
+      if (this.evidence.activeSession !== null) await this.evidence.finish();
+    }
   }
 
   private handleDisconnect(serial: string): void {
