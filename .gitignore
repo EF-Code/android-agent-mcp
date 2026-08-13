@@ -6,4 +6,5 @@ coverage/
 !.env.example
 *.log
 android-device-evidence/
+ANDROID_DEVICE_MCP_BUILD_SPEC.md
 .DS_Store
