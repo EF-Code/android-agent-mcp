@@ -74,10 +74,7 @@ function booleanEnv(value: string | undefined): boolean | undefined {
   return undefined;
 }
 
-function environmentValue(
-  env: NodeJS.ProcessEnv,
-  ...names: string[]
-): string | undefined {
+function environmentValue(env: NodeJS.ProcessEnv, ...names: string[]): string | undefined {
   for (const name of names) {
     if (env[name] !== undefined) return env[name];
   }
