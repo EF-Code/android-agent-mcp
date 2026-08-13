@@ -25,5 +25,5 @@ test('rejects relative APK roots in config', async () => {
   const root = await mkdtemp(join('/tmp', 'android-device-config-'));
   const configPath = join(root, 'config.json');
   await writeFile(configPath, JSON.stringify({ allowedApkRoots: ['relative/path'] }));
-  assert.rejects(() => Promise.resolve(loadConfig({ configPath, env: {} })));
+  assert.throws(() => loadConfig({ configPath, env: {} }));
 });

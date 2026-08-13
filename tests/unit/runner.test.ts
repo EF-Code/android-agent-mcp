@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { access, mkdtemp } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 
@@ -44,5 +44,5 @@ test('does not invoke a shell for metacharacter arguments', async () => {
     timeoutMs: 5_000,
     maxOutputBytes: 16_000,
   });
-  await assert.rejects(() => writeFile(marker, 'should-not-exist', { flag: 'wx' }));
+  await assert.rejects(() => access(marker));
 });
