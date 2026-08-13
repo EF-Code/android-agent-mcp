@@ -13,6 +13,10 @@ export interface PackageInfo {
   packageName: string;
   versionName: string | null;
   versionCode: string | null;
+  minSdkVersion: number | null;
+  targetSdkVersion: number | null;
+  sourcePath: string | null;
+  primaryCpuAbi: string | null;
   installerPackage: string | null;
   launcherActivity: string | null;
   requestedPermissions: string[];
@@ -44,6 +48,13 @@ function parsePackageLines(output: string): string[] {
 
 function firstMatch(output: string, pattern: RegExp): string | null {
   return pattern.exec(output)?.[1]?.trim() ?? null;
+}
+
+function firstNumber(output: string, pattern: RegExp): number | null {
+  const value = firstMatch(output, pattern);
+  if (value === null) return null;
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number > 0 ? number : null;
 }
 
 export class AdbPackages {
@@ -102,6 +113,10 @@ export class AdbPackages {
       packageName,
       versionName: firstMatch(output, /versionName=([^\s]+)/u),
       versionCode: firstMatch(output, /versionCode=(\d+)/u),
+      minSdkVersion: firstNumber(output, /minSdk=([0-9]+)/u),
+      targetSdkVersion: firstNumber(output, /targetSdk=([0-9]+)/u),
+      sourcePath: firstMatch(output, /(?:codePath|path)=([^\s]+)/u),
+      primaryCpuAbi: firstMatch(output, /primaryCpuAbi=([^\s]+)/u),
       installerPackage: firstMatch(output, /installerPackageName=([^\s]+)/u),
       launcherActivity,
       requestedPermissions: [...new Set(requestedPermissions)].slice(0, 500),
