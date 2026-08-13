@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { appendFile, mkdir, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 
 import { ErrorCode } from '../errors/codes.js';
@@ -77,6 +77,7 @@ export class EvidenceSession {
   private readonly actions: string[] = [];
   private readonly warnings: Warning[] = [];
   private finishedAt: string | null = null;
+  private pausedReason: string | null = null;
 
   constructor(
     readonly evidenceId: string,
@@ -98,12 +99,23 @@ export class EvidenceSession {
     };
   }
 
+  get paused(): boolean {
+    return this.pausedReason !== null;
+  }
+
+  pause(reason: string): void {
+    if (this.pausedReason !== null) return;
+    this.pausedReason = reason;
+    this.warnings.push({ code: 'EVIDENCE_PAUSED', message: 'Evidence recording paused by policy.', details: { reason } });
+  }
+
   async writeManifest(input: EvidenceManifestInput): Promise<void> {
     const bytes = Buffer.from(`${JSON.stringify(sanitizedManifest(input, this.startedAt), null, 2)}\n`);
     this.files.push(await this.writeFile('manifest.json', bytes));
   }
 
   async action(name: string, details: Record<string, unknown> = {}): Promise<void> {
+    if (this.paused) return;
     if (this.actions.length >= this.maxFiles * 10) {
       throw new AppError(ErrorCode.EvidencePathInvalid, 'Evidence action limit was reached.');
     }
@@ -121,15 +133,18 @@ export class EvidenceSession {
   }
 
   async saveScreenshot(label: string, png: Buffer): Promise<EvidenceFileDigest> {
+    this.assertRecording('screenshot');
     return this.saveBytes(`screenshots/${validateLabel(label)}.png`, png);
   }
 
   async saveUi(label: string, snapshot: UiSnapshot): Promise<EvidenceFileDigest> {
+    this.assertRecording('UI snapshot');
     const safe = Buffer.from(`${JSON.stringify(sanitizeValue(snapshot), null, 2)}\n`);
     return this.saveBytes(`ui/${validateLabel(label)}.json`, safe);
   }
 
   async saveLog(label: string, text: string): Promise<EvidenceFileDigest> {
+    this.assertRecording('log');
     return this.saveBytes(`logs/${validateLabel(label)}.log`, Buffer.from(redactLogText(text)));
   }
 
@@ -140,6 +155,13 @@ export class EvidenceSession {
   async finish(): Promise<EvidenceSummary> {
     if (this.finishedAt !== null) return this.summary;
     this.finishedAt = new Date().toISOString();
+    const actionsPath = join(this.directory, 'actions.jsonl');
+    try {
+      const actionBytes = await readFile(actionsPath);
+      if (!this.files.some((file) => file.path === 'actions.jsonl')) this.files.push(await digestFile('actions.jsonl', actionBytes));
+    } catch {
+      // No tool actions were recorded.
+    }
     const lines = [
       `# Android Device MCP Evidence ${this.evidenceId}`,
       '',
@@ -156,8 +178,18 @@ export class EvidenceSession {
       '',
       ...(this.warnings.length === 0 ? ['None recorded.'] : this.warnings.map((warning) => `- ${warning.code}: ${warning.message}`)),
     ];
-    await this.writeFile('summary.md', Buffer.from(`${lines.join('\n')}\n`));
+    const summaryBytes = Buffer.from(`${lines.join('\n')}\n`);
+    this.files.push(await this.writeFile('summary.md', summaryBytes));
     return this.summary;
+  }
+
+  private assertRecording(kind: string): void {
+    if (this.paused) {
+      throw new AppError(ErrorCode.SensitivePackage, `Evidence recording is paused; ${kind} was not saved.`, {
+        retryable: true,
+        details: { reason: this.pausedReason },
+      });
+    }
   }
 
   private async saveBytes(relativePath: string, bytes: Buffer): Promise<EvidenceFileDigest> {
@@ -187,7 +219,12 @@ export class EvidenceSession {
 export class EvidenceManager {
   private active: EvidenceSession | null = null;
 
-  constructor(private readonly evidenceRoot: string, private readonly maxBytes: number, private readonly maxFiles: number) {}
+  constructor(
+    private readonly evidenceRoot: string,
+    private readonly maxBytes: number,
+    private readonly maxFiles: number,
+    private readonly retentionMaxAgeMs = 7 * 24 * 60 * 60 * 1_000,
+  ) {}
 
   async begin(input: EvidenceManifestInput, label = 'session'): Promise<EvidenceSession> {
     if (this.active !== null) {
@@ -200,6 +237,7 @@ export class EvidenceManager {
     const directory = resolve(this.evidenceRoot, evidenceId);
     if (!withinRoot(directory, resolve(this.evidenceRoot))) throw new AppError(ErrorCode.EvidencePathInvalid, 'Evidence session path is invalid.');
     await mkdir(this.evidenceRoot, { recursive: true });
+    await this.pruneExpired();
     await mkdir(directory, { recursive: false });
     const session = new EvidenceSession(evidenceId, directory, new Date().toISOString(), this.maxBytes, this.maxFiles);
     this.active = session;
@@ -217,11 +255,36 @@ export class EvidenceManager {
     return this.active;
   }
 
+  get activeSession(): EvidenceSession | null {
+    return this.active;
+  }
+
+  pause(reason: string): void {
+    this.active?.pause(reason);
+  }
+
+  async recordToolCall(name: string): Promise<void> {
+    await this.active?.action('tool_call', { tool: name });
+  }
+
   async finish(): Promise<EvidenceSummary> {
     const session = this.requireActive();
     const summary = await session.finish();
     this.active = null;
     return summary;
+  }
+
+  private async pruneExpired(): Promise<void> {
+    const root = resolve(this.evidenceRoot);
+    const entries = await readdir(root, { withFileTypes: true });
+    const cutoff = Date.now() - this.retentionMaxAgeMs;
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const candidate = resolve(root, entry.name);
+      if (!withinRoot(candidate, root)) continue;
+      const details = await stat(candidate);
+      if (details.mtimeMs < cutoff) await rm(candidate, { recursive: true, force: true });
+    }
   }
 }
 

@@ -93,6 +93,7 @@ Example:
   "maxCommandOutputBytes": 4000000,
   "maxEvidenceBytes": 100000000,
   "maxEvidenceFiles": 500,
+  "evidenceRetentionMaxAgeMs": 604800000,
   "defaultTimeoutMs": 15000,
   "uiSnapshotMaxAgeMs": 3000,
   "approvalMode": "prompt",

@@ -21,6 +21,7 @@ export interface ServerConfig {
   maxCommandOutputBytes: number;
   maxEvidenceBytes: number;
   maxEvidenceFiles: number;
+  evidenceRetentionMaxAgeMs: number;
   defaultTimeoutMs: number;
   uiSnapshotMaxAgeMs: number;
   approvalMode: ApprovalMode;

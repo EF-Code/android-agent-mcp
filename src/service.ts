@@ -59,7 +59,7 @@ export class AndroidDeviceService {
     this.uiAutomator = new AdbUiAutomator(this.adb);
     this.snapshots = new SnapshotStore(config.uiSnapshotMaxAgeMs);
     this.scrcpy = new ScrcpyProcessManager(config.scrcpyPath, config.mirror.leaveRunningOnExit);
-    this.evidence = new EvidenceManager(config.evidenceRoot, config.maxEvidenceBytes, config.maxEvidenceFiles);
+    this.evidence = new EvidenceManager(config.evidenceRoot, config.maxEvidenceBytes, config.maxEvidenceFiles, config.evidenceRetentionMaxAgeMs);
   }
 
   async close(): Promise<void> {

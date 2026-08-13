@@ -17,6 +17,7 @@ The server starts with safe defaults and accepts an optional JSON file selected 
 | `maxCommandOutputBytes` | `ANDROID_DEVICE_MCP_MAX_COMMAND_OUTPUT_BYTES` | Per-command stdout/stderr limit |
 | `maxEvidenceBytes` | `ANDROID_DEVICE_MCP_MAX_EVIDENCE_BYTES` | Evidence session byte budget |
 | `maxEvidenceFiles` | `ANDROID_DEVICE_MCP_MAX_EVIDENCE_FILES` | Evidence file budget |
+| `evidenceRetentionMaxAgeMs` | `ANDROID_DEVICE_MCP_EVIDENCE_RETENTION_MAX_AGE_MS` | Maximum age of completed evidence directories before safe root-scoped cleanup |
 | `defaultTimeoutMs` | `ANDROID_DEVICE_MCP_DEFAULT_TIMEOUT_MS` | Default ADB command timeout |
 | `uiSnapshotMaxAgeMs` | `ANDROID_DEVICE_MCP_UI_SNAPSHOT_MAX_AGE_MS` | Semantic snapshot freshness window |
 | `approvalMode` | `ANDROID_DEVICE_MCP_APPROVAL_MODE` | Host policy: `prompt` (fail closed), `allow`, or `deny` |

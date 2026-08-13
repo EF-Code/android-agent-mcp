@@ -23,6 +23,7 @@ const configInputSchema = z
     maxCommandOutputBytes: z.number().int().min(1_024).max(100_000_000),
     maxEvidenceBytes: z.number().int().min(1_024).max(1_000_000_000),
     maxEvidenceFiles: z.number().int().min(1).max(10_000),
+    evidenceRetentionMaxAgeMs: z.number().int().min(60 * 60 * 1_000).max(365 * 24 * 60 * 60 * 1_000),
     defaultTimeoutMs: z.number().int().min(250).max(120_000),
     uiSnapshotMaxAgeMs: z.number().int().min(250).max(60_000),
     approvalMode: z.enum(['prompt', 'allow', 'deny']),
@@ -86,6 +87,7 @@ function environmentOverrides(env: NodeJS.ProcessEnv): ConfigInput {
     ['maxCommandOutputBytes', 'ANDROID_DEVICE_MCP_MAX_COMMAND_OUTPUT_BYTES'],
     ['maxEvidenceBytes', 'ANDROID_DEVICE_MCP_MAX_EVIDENCE_BYTES'],
     ['maxEvidenceFiles', 'ANDROID_DEVICE_MCP_MAX_EVIDENCE_FILES'],
+    ['evidenceRetentionMaxAgeMs', 'ANDROID_DEVICE_MCP_EVIDENCE_RETENTION_MAX_AGE_MS'],
     ['defaultTimeoutMs', 'ANDROID_DEVICE_MCP_DEFAULT_TIMEOUT_MS'],
     ['uiSnapshotMaxAgeMs', 'ANDROID_DEVICE_MCP_UI_SNAPSHOT_MAX_AGE_MS'],
   ];
@@ -160,6 +162,8 @@ export function loadConfig(options: { configPath?: string; env?: NodeJS.ProcessE
       overrides.maxCommandOutputBytes ?? input.maxCommandOutputBytes ?? defaults.maxCommandOutputBytes,
     maxEvidenceBytes: overrides.maxEvidenceBytes ?? input.maxEvidenceBytes ?? defaults.maxEvidenceBytes,
     maxEvidenceFiles: overrides.maxEvidenceFiles ?? input.maxEvidenceFiles ?? defaults.maxEvidenceFiles,
+    evidenceRetentionMaxAgeMs:
+      overrides.evidenceRetentionMaxAgeMs ?? input.evidenceRetentionMaxAgeMs ?? defaults.evidenceRetentionMaxAgeMs,
     defaultTimeoutMs: overrides.defaultTimeoutMs ?? input.defaultTimeoutMs ?? defaults.defaultTimeoutMs,
     uiSnapshotMaxAgeMs: overrides.uiSnapshotMaxAgeMs ?? input.uiSnapshotMaxAgeMs ?? defaults.uiSnapshotMaxAgeMs,
     approvalMode: overrides.approvalMode ?? input.approvalMode ?? defaults.approvalMode,

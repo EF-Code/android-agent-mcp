@@ -18,6 +18,7 @@ export function defaultConfig(): ServerConfig {
     maxCommandOutputBytes: 4_000_000,
     maxEvidenceBytes: 100_000_000,
     maxEvidenceFiles: 500,
+    evidenceRetentionMaxAgeMs: 7 * 24 * 60 * 60 * 1_000,
     defaultTimeoutMs: 15_000,
     uiSnapshotMaxAgeMs: 3_000,
     approvalMode: 'prompt',
