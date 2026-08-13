@@ -221,7 +221,7 @@ export class AdbLogcat {
       maxOutputBytes: Math.min(this.defaultMaxBytes, 2_000_000),
     });
     return parseCrashBlocks(redactLogText(output.stdout.toString('utf8'))).filter(
-      (crash) => crash.processPackage === packageName || crash.processPackage === null,
+      (crash) => crash.processPackage === packageName,
     );
   }
 }
