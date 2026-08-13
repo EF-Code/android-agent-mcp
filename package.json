@@ -24,9 +24,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "tsc --noEmit -p tsconfig.json",
-    "test": "npm run build:test && node --test dist-test/tests",
-    "test:watch": "npm run build:test && node --test --watch dist-test/tests",
-    "test:physical": "ANDROID_DEVICE_MCP_PHYSICAL=1 npm run build:test && ANDROID_DEVICE_MCP_PHYSICAL=1 node --test dist-test/tests/physical-device",
+    "test": "npm run build:test && node --test 'dist-test/tests/**/*.test.js'",
+    "test:watch": "npm run build:test && node --test --watch 'dist-test/tests/**/*.test.js'",
+    "test:physical": "ANDROID_DEVICE_MCP_PHYSICAL=1 npm run build:test && ANDROID_DEVICE_MCP_PHYSICAL=1 node --test 'dist-test/tests/physical-device/**/*.test.js'",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "prepare": "npm run build",
     "build:test": "tsc -p tsconfig.test.json"
