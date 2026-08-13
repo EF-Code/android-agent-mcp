@@ -44,3 +44,17 @@ test('invalidating snapshots rejects retained node references', () => {
   store.invalidate();
   assert.throws(() => store.requireFresh('snapshot-1'), /missing or no longer retained/u);
 });
+
+test('rejects snapshots without device binding when a device context is supplied', () => {
+  const store = new SnapshotStore(3_000);
+  const unbound = makeSnapshot();
+  delete unbound.deviceSerial;
+  delete unbound.deviceSessionId;
+  store.put(unbound);
+  assert.throws(() =>
+    store.requireFresh('snapshot-1', {
+      deviceSerial: 'serial-1',
+      deviceSessionId: 'session-1',
+    }),
+  );
+});

@@ -81,11 +81,7 @@ export class SnapshotStore {
       );
     }
 
-    if (
-      context.deviceSerial !== undefined &&
-      snapshot.deviceSerial !== undefined &&
-      snapshot.deviceSerial !== context.deviceSerial
-    ) {
+    if (context.deviceSerial !== undefined && snapshot.deviceSerial !== context.deviceSerial) {
       throw new AppError(
         ErrorCode.StaleUiSnapshot,
         'UI snapshot belongs to a different device serial.',
@@ -98,7 +94,6 @@ export class SnapshotStore {
 
     if (
       context.deviceSessionId !== undefined &&
-      snapshot.deviceSessionId !== undefined &&
       snapshot.deviceSessionId !== context.deviceSessionId
     ) {
       throw new AppError(
