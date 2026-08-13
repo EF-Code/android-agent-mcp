@@ -597,6 +597,7 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
       try {
         await service.requireAllowedForeground('key press');
         const serial = await service.selectedSerial();
+        await service.requireAllowedForeground('key press before action');
         await service.input.key(serial, args.key as AllowedKey, args.allow_power ?? false);
         return jsonContent(ok({ key: args.key }, { deviceSerial: serial }));
       } catch (error) {
@@ -623,6 +624,7 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
             ErrorCode.ProhibitedOperation,
             'Typing into password fields is blocked.',
           );
+        await service.requireAllowedForeground('text entry before action');
         const count = await service.input.text(await service.selectedSerial(), args.text);
         return jsonContent(
           ok({ character_count: count }, { deviceSerial: await service.selectedSerial() }),

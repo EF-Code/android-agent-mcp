@@ -32,6 +32,26 @@ import { ScrcpyProcessManager } from './scrcpy/process-manager.js';
 
 const STARTUP_WAIT_MS = 200;
 
+function sameForeground(left: ForegroundApp, right: ForegroundApp): boolean {
+  return left.packageName === right.packageName && left.activity === right.activity;
+}
+
+function assertSameForeground(
+  before: ForegroundApp,
+  current: ForegroundApp,
+  operation: string,
+): void {
+  if (sameForeground(before, current)) return;
+  throw new AppError(
+    ErrorCode.StaleUiSnapshot,
+    `Foreground changed while preparing ${operation}.`,
+    {
+      retryable: true,
+      details: { before, current },
+    },
+  );
+}
+
 export interface ActionObservation {
   before: UiSnapshot | null;
   after: UiSnapshot | null;
@@ -296,19 +316,7 @@ export class AndroidDeviceService {
         : await this.requireFreshSnapshot(sourceSnapshot.snapshotId);
     const beforePixelSha256 = verifyPixels ? await this.pixelDigest() : null;
     this.policy.assertForegroundAllowed(before.foreground, 'semantic tap');
-    if (
-      before.foreground.packageName !== foreground.packageName ||
-      before.foreground.activity !== foreground.activity
-    ) {
-      throw new AppError(
-        ErrorCode.StaleUiSnapshot,
-        'Foreground changed while preparing the semantic tap.',
-        {
-          retryable: true,
-          details: { before: foreground, snapshot: before.foreground },
-        },
-      );
-    }
+    assertSameForeground(foreground, before.foreground, 'the semantic tap');
     const match = resolveUniqueMatch(before, selector, matchIndex);
     if (!match.node.flags.enabled || match.node.bounds === null || match.node.center === null) {
       throw new AppError(
@@ -329,6 +337,8 @@ export class AndroidDeviceService {
       );
     }
     this.policy.assertPackageAllowed(match.node.packageName);
+    const actionForeground = await this.requireAllowedForeground('semantic tap before action');
+    assertSameForeground(before.foreground, actionForeground, 'the semantic tap');
     await this.input.tap(serial, match.node.center.x, match.node.center.y);
     await this.stabilize();
     const after = verifyChange ? await this.captureUi() : null;
@@ -361,6 +371,7 @@ export class AndroidDeviceService {
     }
     const before = verifyChange ? await this.captureUi() : null;
     const beforePixelSha256 = verifyPixels ? await this.pixelDigest() : null;
+    await this.requireAllowedForeground('screen tap before action');
     await this.input.tap(serial, x, y);
     await this.stabilize();
     const after = verifyChange ? await this.captureUi() : null;
@@ -440,6 +451,7 @@ export class AndroidDeviceService {
     }
     const before = options.verifyChange ? await this.captureUi() : null;
     const beforePixelSha256 = options.verifyPixels === true ? await this.pixelDigest() : null;
+    await this.requireAllowedForeground('screen swipe before action');
     await this.input.swipe(
       serial,
       startX!,
@@ -470,6 +482,7 @@ export class AndroidDeviceService {
         },
       );
     }
+    await this.requireAllowedForeground('screen long press before action');
     await this.input.longPress(serial, x, y, validateDuration(durationMs, 'durationMs', 30_000));
     await this.stabilize();
   }
