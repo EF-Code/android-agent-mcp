@@ -15,7 +15,7 @@ export function defaultConfig(): ServerConfig {
     sensitivePackages: ['*.bank.*', '*.wallet.*', '*.password*'],
     allowedRuntimePermissions: [],
     allowedApkRoots: [join(homedir(), 'projects')],
-    evidenceRoot: join(homedir(), 'android-mcp-evidence'),
+    evidenceRoot: join(homedir(), 'android-agent-mcp-evidence'),
     maxScreenshotBytes: 25_000_000,
     maxApkBytes: 500_000_000,
     maxLogBytes: 2_000_000,
