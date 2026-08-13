@@ -1,0 +1,48 @@
+import assert from 'node:assert/strict';
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import test from 'node:test';
+
+import { ErrorCode } from '../../src/errors/codes.js';
+import { AppError } from '../../src/errors/app-error.js';
+import { runCommand } from '../../src/process/runner.js';
+
+test('runs commands with argument arrays and records them', async () => {
+  const result = await runCommand(process.execPath, ['-e', 'process.stdout.write(process.argv[1])', 'safe-value'], {
+    timeoutMs: 5_000,
+    maxOutputBytes: 16_000,
+  });
+  assert.equal(result.stdout.toString(), 'safe-value');
+  assert.equal(result.record.executable, process.execPath);
+  assert.deepEqual(result.record.args, ['-e', 'process.stdout.write(process.argv[1])', 'safe-value']);
+});
+
+test('redacts configured secret arguments in command records', async () => {
+  const result = await runCommand(process.execPath, ['-e', 'process.exit(0)', 'secret-value'], {
+    timeoutMs: 5_000,
+    maxOutputBytes: 16_000,
+    secretArgIndexes: new Set([2]),
+  });
+  assert.equal(result.record.args[2], '[REDACTED]');
+});
+
+test('enforces output limits and timeouts', async () => {
+  await assert.rejects(
+    () => runCommand(process.execPath, ['-e', 'process.stdout.write("x".repeat(10000))'], { timeoutMs: 5_000, maxOutputBytes: 1_024 }),
+    (error: unknown) => error instanceof AppError && error.code === ErrorCode.CommandOutputLimit,
+  );
+  await assert.rejects(
+    () => runCommand(process.execPath, ['-e', 'setTimeout(() => {}, 10000)'], { timeoutMs: 100, maxOutputBytes: 1_024 }),
+    (error: unknown) => error instanceof AppError && error.code === ErrorCode.CommandTimeout,
+  );
+});
+
+test('does not invoke a shell for metacharacter arguments', async () => {
+  const directory = await mkdtemp(join('/tmp', 'android-device-runner-'));
+  const marker = join(directory, 'marker');
+  await runCommand(process.execPath, ['-e', 'process.stdout.write(process.argv[1])', `$(touch ${marker})`], {
+    timeoutMs: 5_000,
+    maxOutputBytes: 16_000,
+  });
+  await assert.rejects(() => writeFile(marker, 'should-not-exist', { flag: 'wx' }));
+});
