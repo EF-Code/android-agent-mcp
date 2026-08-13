@@ -100,7 +100,7 @@ export class EvidenceSession {
 
   async writeManifest(input: EvidenceManifestInput): Promise<void> {
     const bytes = Buffer.from(`${JSON.stringify(sanitizedManifest(input, this.startedAt), null, 2)}\n`);
-    await this.writeFile('manifest.json', bytes);
+    this.files.push(await this.writeFile('manifest.json', bytes));
   }
 
   async action(name: string, details: Record<string, unknown> = {}): Promise<void> {
@@ -172,10 +172,7 @@ export class EvidenceSession {
       throw new AppError(ErrorCode.EvidencePathInvalid, 'Evidence byte limit was reached.');
     }
     await mkdir(resolve(target, '..'), { recursive: true });
-    await writeFile(target, bytes, { flag: 'wx' }).catch(async (error: unknown) => {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-      await writeFile(target, bytes);
-    });
+    await writeFile(target, bytes, { flag: 'wx' });
     return digestFile(relativePath, bytes);
   }
 }
@@ -195,6 +192,7 @@ export class EvidenceManager {
     const evidenceId = `${new Date().toISOString().replace(/[:.]/g, '-')}-${safeLabel}-${randomUUID().slice(0, 8)}`;
     const directory = resolve(this.evidenceRoot, evidenceId);
     if (!withinRoot(directory, resolve(this.evidenceRoot))) throw new AppError(ErrorCode.EvidencePathInvalid, 'Evidence session path is invalid.');
+    await mkdir(this.evidenceRoot, { recursive: true });
     await mkdir(directory, { recursive: false });
     const session = new EvidenceSession(evidenceId, directory, new Date().toISOString(), this.maxBytes, this.maxFiles);
     this.active = session;
