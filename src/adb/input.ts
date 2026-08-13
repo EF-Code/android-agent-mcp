@@ -35,7 +35,16 @@ export function encodeSafeAsciiText(value: string): string {
       details: { characterCount: value.length },
     });
   }
-  return value.replace(/%/g, '%25').replace(/ /g, '%s').replace(/\\/g, '\\\\');
+  return value
+    .replace(/%/g, '%25')
+    .replace(/ /g, '%s')
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '\\"')
+    .replace(/&/g, '\\&')
+    .replace(/</g, '\\<')
+    .replace(/>/g, '\\>')
+    .replace(/[()|;`$]/g, '\\$&');
 }
 
 export class AdbInput {
