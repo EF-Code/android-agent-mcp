@@ -7,6 +7,7 @@ import { AdbLogcat } from '../../src/adb/logcat.js';
 import { AdbPackages } from '../../src/adb/packages.js';
 import { AdbScreenshots } from '../../src/adb/screenshots.js';
 import { AdbUiAutomator } from '../../src/adb/ui-automator.js';
+import { parseForegroundActivity } from '../../src/adb/foreground.js';
 import type { CommandOutput } from '../../src/types.js';
 
 function output(stdout: string | Buffer = ''): CommandOutput {
@@ -160,4 +161,15 @@ test('uses all-package metadata commands instead of fabricating classifications'
     '-f',
     '-s',
   ]);
+});
+
+test('parses modern Android foreground activity records', () => {
+  const foreground = parseForegroundActivity(
+    'topResumedActivity=ActivityRecord{123 u0 com.example.app/.MainActivity t1}',
+  );
+  assert.deepEqual(foreground, {
+    packageName: 'com.example.app',
+    activity: '.MainActivity',
+    pid: null,
+  });
 });

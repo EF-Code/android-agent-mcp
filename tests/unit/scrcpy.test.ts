@@ -138,3 +138,84 @@ test('marks an owned mirror detached without changing its bound serial', async (
   assert.equal(manager.status().deviceSerial, 'serial-2');
   await manager.stop();
 });
+
+test('starts an owned mirror with control enabled when requested', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'android-device-scrcpy-visible-'));
+  const fixture = join(directory, 'fake-scrcpy.mjs');
+  await writeFile(fixture, '#!/usr/bin/env node\nsetInterval(() => undefined, 1000);\n');
+  await chmod(fixture, 0o755);
+  const runner = {
+    run: async () => ({
+      stdout: Buffer.from('scrcpy 4.1\n'),
+      stderr: Buffer.alloc(0),
+      record: {
+        executable: fixture,
+        args: [],
+        exitCode: 0,
+        signal: null,
+        durationMs: 1,
+        stdoutBytes: 12,
+        stderrBytes: 0,
+        stdoutTruncated: false,
+        stderrTruncated: false,
+      },
+    }),
+  };
+  const manager = new ScrcpyProcessManager(fixture, false, runner);
+  const started = await manager.start('serial-visible', {
+    maxSize: 1_600,
+    maxFps: 30,
+    audio: false,
+    control: true,
+    stayAwake: false,
+    turnScreenOff: false,
+    windowTitle: 'Android Device MCP',
+  });
+  assert.equal(started.status.running, true);
+  assert.equal(started.status.args.includes('--no-control'), false);
+  await manager.stop();
+});
+
+test('restarts an owned mirror when explicit options change', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'android-device-scrcpy-options-'));
+  const fixture = join(directory, 'fake-scrcpy.mjs');
+  await writeFile(fixture, '#!/usr/bin/env node\nsetInterval(() => undefined, 1000);\n');
+  await chmod(fixture, 0o755);
+  const runner = {
+    run: async () => ({
+      stdout: Buffer.from('scrcpy 4.1\n'),
+      stderr: Buffer.alloc(0),
+      record: {
+        executable: fixture,
+        args: ['--version'],
+        exitCode: 0,
+        signal: null,
+        durationMs: 1,
+        stdoutBytes: 12,
+        stderrBytes: 0,
+        stdoutTruncated: false,
+        stderrTruncated: false,
+      },
+    }),
+  };
+  const manager = new ScrcpyProcessManager(fixture, false, runner);
+  const options = {
+    maxSize: 1_600,
+    maxFps: 30,
+    audio: false,
+    control: true,
+    stayAwake: false,
+    turnScreenOff: false,
+    windowTitle: 'Android Device MCP',
+  };
+  const first = await manager.start('serial-options', options);
+  const firstPid = first.status.pid;
+  const repeated = await manager.start('serial-options', options);
+  assert.equal(repeated.alreadyRunning, true);
+  assert.equal(repeated.status.pid, firstPid);
+  const changed = await manager.start('serial-options', { ...options, maxFps: 15 });
+  assert.equal(changed.alreadyRunning, false);
+  assert.notEqual(changed.status.pid, firstPid);
+  assert.ok(changed.status.args.includes('15'));
+  await manager.stop();
+});

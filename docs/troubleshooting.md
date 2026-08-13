@@ -28,9 +28,9 @@ After a disconnect or authorization transition, call `device_list` and then `dev
 
 Check that the device is authorized and unlocked. UIAutomator may be empty or incomplete for WebViews, games, video, Compose accessibility gaps, and custom canvases. Use coordinate fallback only after inspecting the native display dimensions and rotation.
 
-## `scrcpy` is missing
+## `scrcpy` is missing or does not open
 
-Headless screenshots, UI inspection, ADB control, apps, and logs do not require scrcpy. Install scrcpy only if a visible mirror is wanted, then rerun `scrcpy --version`.
+The default session makes one best-effort attempt to start a visible mirror after device selection. Failure is reported as a warning and does not disable ADB tools. Install scrcpy and rerun `npm run check:environment -- --require-scrcpy`; set `ANDROID_DEVICE_MCP_MIRROR_AUTO_START=false` when headless operation is intentional. After `mirror_stop`, call `mirror_start` to reopen it explicitly.
 
 ## APK installation fails
 
@@ -42,4 +42,4 @@ Run `codex mcp list`, confirm the compiled absolute path, restart Codex, and che
 
 ## Physical tests are skipped
 
-The physical suite requires `ANDROID_DEVICE_MCP_PHYSICAL=1`, a connected authorized device, an explicit allowlisted harmless test package, and known test semantics. A missing phone is a pending hardware gate, not a passing result.
+The physical suite requires `ANDROID_DEVICE_MCP_PHYSICAL=1`, a connected authorized device, an explicit test package, and a repeatable harmless selector. It tests the actual MCP stdio protocol. Normal MCP operation does not require `ANDROID_DEVICE_MCP_TEST_PACKAGE`; that variable belongs only to the physical fixture.

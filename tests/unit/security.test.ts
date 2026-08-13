@@ -38,7 +38,7 @@ test('enforces package allowlist, sensitive patterns, and host mutation approval
   );
   assert.throws(
     () => policy.assertPackageAllowed('com.android.settings'),
-    (error: unknown) => error instanceof AppError && error.code === ErrorCode.SensitivePackage,
+    (error: unknown) => error instanceof AppError && error.code === ErrorCode.PackageNotAllowed,
   );
   assert.throws(
     () => policy.assertPackageAllowed('not a package'),
@@ -50,6 +50,17 @@ test('enforces package allowlist, sensitive patterns, and host mutation approval
   );
   assert.doesNotThrow(() =>
     new Policy({ ...config, approvalMode: 'allow' }).assertMutationAllowed('app_install'),
+  );
+});
+
+test('permits general valid packages by default while blocking sensitive patterns', () => {
+  const policy = new Policy(defaultConfig());
+  assert.doesNotThrow(() => policy.assertPackageAllowed('org.telegram.messenger.web'));
+  assert.doesNotThrow(() => policy.assertPackageAllowed('com.aistudio.omnicalc.vzkrmp'));
+  assert.doesNotThrow(() => policy.assertPackageAllowed('com.android.settings'));
+  assert.throws(
+    () => policy.assertPackageAllowed('com.example.bank.app'),
+    (error: unknown) => error instanceof AppError && error.code === ErrorCode.SensitivePackage,
   );
 });
 
@@ -73,7 +84,7 @@ test('requires an authorized, non-sensitive foreground package for observations'
         { packageName: 'com.android.settings', activity: '.Settings', pid: 2 },
         'capture',
       ),
-    (error: unknown) => error instanceof AppError && error.code === ErrorCode.SensitivePackage,
+    (error: unknown) => error instanceof AppError && error.code === ErrorCode.PackageNotAllowed,
   );
 });
 

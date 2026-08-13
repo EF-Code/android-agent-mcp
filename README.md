@@ -1,6 +1,6 @@
 # Android Device MCP (`scrcpy-agent`)
 
-Android Device MCP is a local, security-conscious MCP server for observing and controlling an explicitly authorized Android development phone over USB. It exposes ADB-backed screenshots, UIAutomator state, semantic interaction, package diagnostics, bounded logcat, evidence recording, and an optional server-owned scrcpy mirror.
+Android Device MCP is a local MCP server for controlling an explicitly authorized Android phone over ADB, with a visible server-owned scrcpy mirror. It exposes screenshots, UIAutomator state, semantic interaction, package diagnostics, bounded logcat, evidence recording, and reversible phone controls.
 
 The server does not call a language model and does not bypass Android locks, authentication, Play Integrity, DRM, root detection, permission prompts, or enterprise policy.
 
@@ -9,19 +9,19 @@ The server does not call a language model and does not bypass Android locks, aut
 Implemented and locally verified:
 
 - TypeScript build and strict type-checking
-- 46 automated test cases currently report 45 passes and one explicitly skipped physical-device case
+- Automated unit, integration, protocol, and scrcpy tests, plus a separate opt-in physical-device smoke test
 - ADB/scrcpy adapters with injectable command runners
 - Device discovery, explicit selection, screenshots, UIAutomator parsing, semantic selectors, input, app inspection, logcat, scrcpy ownership, and evidence sessions
 - Path-restricted APK installation and approval-gated mutations
 
-Physical-device validation is opt-in and remains a separate gate. At the latest validation point no USB device was connected. Do not interpret the passing mocked tests as proof of phone behavior.
+Physical-device validation is opt-in and remains a separate gate. The full MCP stdio path has been validated on an authorized Samsung SM-A075F: discovery, selection, device information, visible scrcpy, app launch, screenshot image content, UI dump/find/tap, bounded logcat, evidence completion, and owned-mirror shutdown.
 
 ## Requirements
 
 - Linux desktop is the supported initial platform; Manjaro/Arch is the primary tested distribution.
 - Node.js 22 or newer.
 - Android platform-tools (`adb`).
-- `scrcpy` is optional for headless tools and required only for mirroring.
+- `scrcpy` is required by the default visible-mirror workflow; set `ANDROID_DEVICE_MCP_MIRROR_AUTO_START=false` for headless operation.
 - A phone with Developer Options and USB debugging enabled, with this host’s RSA key accepted.
 
 The server does not install ADB or scrcpy. Verify the host tools without changing system state:
@@ -80,7 +80,7 @@ The [official OpenAI MCP guidance](https://learn.chatgpt.com/docs/extend/mcp) do
 
 ## Configuration
 
-Configuration is optional. Without a file, conservative defaults are used. Select a JSON file with `ANDROID_DEVICE_MCP_CONFIG`:
+Configuration is optional. Without a file, the server enables broad non-sensitive phone control and a visible scrcpy mirror. Select a JSON file with `ANDROID_DEVICE_MCP_CONFIG`:
 
 ```zsh
 ANDROID_DEVICE_MCP_CONFIG=/absolute/path/to/android-device-mcp.json \
@@ -94,8 +94,8 @@ Example:
   "adbPath": "adb",
   "scrcpyPath": "scrcpy",
   "autoSelectSingleDevice": true,
-  "allowedPackages": ["com.example.test"],
-  "sensitivePackages": ["com.android.settings", "*.bank.*", "*.wallet.*"],
+  "allowedPackages": ["*"],
+  "sensitivePackages": ["*.bank.*", "*.wallet.*", "*.password*"],
   "allowedRuntimePermissions": [],
   "allowedApkRoots": ["/home/user/projects"],
   "evidenceRoot": "/home/user/android-device-mcp-evidence",
@@ -110,6 +110,7 @@ Example:
   "uiSnapshotMaxAgeMs": 3000,
   "approvalMode": "prompt",
   "mirror": {
+    "autoStart": true,
     "maxSize": 1600,
     "maxFps": 30,
     "audio": false
@@ -119,6 +120,8 @@ Example:
 
 Environment overrides use the `ANDROID_DEVICE_MCP_` prefix. Lists are comma-separated. Configuration never contains a phone PIN, password, account credential, API key, cookie, or authorization token.
 
+The default `allowedPackages` policy is `*`, so the agent does not require manual app selection. Banking, wallet, and password-style package patterns remain blocked by default; set `ANDROID_DEVICE_MCP_SENSITIVE_PACKAGES=''` only for a deliberately trusted session that needs literal all-app control.
+
 ## Preferred operating loop
 
 1. Call `device_list`.
@@ -126,9 +129,9 @@ Environment overrides use the `ANDROID_DEVICE_MCP_` prefix. Lists are comma-sepa
 3. Call `device_info` and confirm the target.
 4. Use `ui_dump`/`ui_find` before coordinate tools.
 5. For each action, observe, act, wait briefly, observe again, and report uncertainty.
-6. Keep every package inside the configured allowlist.
+6. General valid packages are available by default; honor configured sensitive-package blocks.
 7. Mutating tools remain fail-closed unless the host explicitly uses `approvalMode: "allow"`; keep Codex write approval enabled as an additional client control.
-8. Use `mirror_start` only when the user wants a visible scrcpy window; continue to act through ADB tools.
+8. Selecting a device makes one best-effort attempt to start the visible scrcpy mirror unless `mirror.autoStart` is disabled. A scrcpy failure is returned as a warning and never blocks ADB tools. After `mirror_stop`, use `mirror_start` to reopen it explicitly.
 9. Use `evidence_begin`, explicitly capture the desired artifacts, then `evidence_finish`.
 
 If the selected phone disconnects or becomes unauthorized, the server invalidates retained UI state and requires an explicit `device_select` again after reconnecting, even when the serial is unchanged.
@@ -155,11 +158,11 @@ Opt-in physical tests are separate:
 ```zsh
 export ANDROID_DEVICE_MCP_PHYSICAL=1
 export ANDROID_DEVICE_MCP_TEST_PACKAGE=com.example.androiddevicetest
-export ANDROID_DEVICE_MCP_TEST_SELECTOR='{"text":"Continue","clickable":true}'
+export ANDROID_DEVICE_MCP_TEST_SELECTOR='{"text":"7"}'
 npm run test:physical
 ```
 
-They require a designated harmless test package, a known selector, and a connected authorized phone. Destructive tests are not run automatically. Without all opt-in values or without exactly one authorized device, the case skips and remains an explicit hardware gate.
+The physical harness remains deliberately explicit: it requires a designated test package, a repeatable harmless selector, and exactly one connected authorized phone. It starts the actual stdio MCP server and drives the complete protocol path. This fixture is separate from normal MCP operation, where the default policy permits all valid non-sensitive packages. Destructive tests are not run automatically.
 
 ## Tool groups
 

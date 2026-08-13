@@ -34,6 +34,7 @@ const configInputSchema = z
     approvalMode: z.enum(['prompt', 'allow', 'deny']),
     mirror: z
       .object({
+        autoStart: z.boolean(),
         maxSize: z.number().int().min(240).max(8_000),
         maxFps: z.number().int().min(1).max(120),
         audio: z.boolean(),
@@ -66,12 +67,20 @@ function numberEnv(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function booleanEnv(value: string | undefined): boolean | undefined {
+  if (value === undefined) return undefined;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return undefined;
+}
+
 function environmentOverrides(env: NodeJS.ProcessEnv): ConfigInput {
   const overrides: ConfigInput = {};
   const allowedPackages = splitList(env.ANDROID_DEVICE_MCP_ALLOWED_PACKAGES);
   const sensitivePackages = splitList(env.ANDROID_DEVICE_MCP_SENSITIVE_PACKAGES);
   const allowedRuntimePermissions = splitList(env.ANDROID_DEVICE_MCP_ALLOWED_RUNTIME_PERMISSIONS);
   const allowedApkRoots = splitList(env.ANDROID_DEVICE_MCP_ALLOWED_APK_ROOTS);
+  const mirrorAutoStart = booleanEnv(env.ANDROID_DEVICE_MCP_MIRROR_AUTO_START);
 
   if (env.ANDROID_DEVICE_MCP_ADB_PATH !== undefined)
     overrides.adbPath = env.ANDROID_DEVICE_MCP_ADB_PATH;
@@ -90,6 +99,7 @@ function environmentOverrides(env: NodeJS.ProcessEnv): ConfigInput {
   if (env.ANDROID_DEVICE_MCP_APPROVAL_MODE !== undefined) {
     overrides.approvalMode = env.ANDROID_DEVICE_MCP_APPROVAL_MODE as ConfigInput['approvalMode'];
   }
+  if (mirrorAutoStart !== undefined) overrides.mirror = { autoStart: mirrorAutoStart };
 
   const numericFields: Array<[keyof ConfigInput, string]> = [
     ['maxScreenshotBytes', 'ANDROID_DEVICE_MCP_MAX_SCREENSHOT_BYTES'],
@@ -160,6 +170,7 @@ export function loadConfig(
   const defaults = defaultConfig();
 
   const mirror: MirrorConfig = {
+    autoStart: overrides.mirror?.autoStart ?? input.mirror?.autoStart ?? defaults.mirror.autoStart,
     maxSize: overrides.mirror?.maxSize ?? input.mirror?.maxSize ?? defaults.mirror.maxSize,
     maxFps: overrides.mirror?.maxFps ?? input.mirror?.maxFps ?? defaults.mirror.maxFps,
     audio: overrides.mirror?.audio ?? input.mirror?.audio ?? defaults.mirror.audio,

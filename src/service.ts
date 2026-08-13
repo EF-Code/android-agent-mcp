@@ -14,7 +14,7 @@ import { AdbUiAutomator } from './adb/ui-automator.js';
 import { EvidenceManager, type EvidenceSession } from './evidence/recorder.js';
 import { Policy } from './policy/policy.js';
 import { redactSensitiveUiText } from './policy/redaction.js';
-import { AppError } from './errors/app-error.js';
+import { AppError, asAppError } from './errors/app-error.js';
 import { ErrorCode } from './errors/codes.js';
 import type { ServerConfig } from './config/types.js';
 import type { DeviceInfo, ForegroundApp, ScreenObservation } from './types.js';
@@ -28,12 +28,29 @@ import {
   validateLabel,
   validatePackageName,
 } from './validation/common.js';
+import type { ScrcpyStartOptions } from './scrcpy/capabilities.js';
 import { ScrcpyProcessManager } from './scrcpy/process-manager.js';
 
 const STARTUP_WAIT_MS = 200;
 
 function sameForeground(left: ForegroundApp, right: ForegroundApp): boolean {
   return left.packageName === right.packageName && left.activity === right.activity;
+}
+
+export function uiStateFingerprint(snapshot: UiSnapshot): string {
+  return JSON.stringify({
+    display: snapshot.display,
+    foreground: snapshot.foreground,
+    nodes: snapshot.nodes.map((node) => ({
+      className: node.className,
+      packageName: node.packageName,
+      text: node.text,
+      contentDescription: node.contentDescription,
+      resourceId: node.resourceId,
+      flags: node.flags,
+      bounds: node.bounds,
+    })),
+  });
 }
 
 function assertSameForeground(
@@ -76,6 +93,8 @@ export class AndroidDeviceService {
   readonly scrcpy: ScrcpyProcessManager;
   readonly evidence: EvidenceManager;
   private readonly activeLogControllers = new Set<AbortController>();
+  private autoMirrorError: AppError | null = null;
+  private autoMirrorAttemptedSessionId: string | null = null;
 
   constructor(readonly config: ServerConfig) {
     this.adb = new AdbClient({
@@ -122,12 +141,74 @@ export class AndroidDeviceService {
   private handleDisconnect(serial: string): void {
     this.snapshots.invalidate();
     this.scrcpy.markDetached(serial);
+    this.autoMirrorAttemptedSessionId = null;
     for (const controller of this.activeLogControllers) controller.abort();
     this.evidence.pause(`selected device ${serial} disconnected`);
   }
 
   async selectedSerial(): Promise<string> {
-    return (await this.devices.requireSelected()).serial;
+    const selected = await this.devices.requireSelected();
+    await this.ensureAutoMirror();
+    return selected.serial;
+  }
+
+  async listDevices(): Promise<Awaited<ReturnType<DeviceManager['list']>>> {
+    const devices = await this.devices.list();
+    await this.ensureAutoMirror();
+    return devices;
+  }
+
+  async selectDevice(serial: string): Promise<Awaited<ReturnType<DeviceManager['select']>>> {
+    const result = await this.devices.select(serial);
+    await this.ensureAutoMirror();
+    return result;
+  }
+
+  private async ensureAutoMirror(): Promise<void> {
+    if (!this.config.mirror.autoStart || this.devices.selected === null) return;
+    const selected = this.devices.selected;
+    const serial = selected.serial;
+    const status = this.scrcpy.status();
+    if (status.running && status.deviceSerial === serial && !status.detached) {
+      this.autoMirrorAttemptedSessionId = selected.sessionId;
+      return;
+    }
+    if (this.autoMirrorAttemptedSessionId === selected.sessionId) return;
+    this.autoMirrorAttemptedSessionId = selected.sessionId;
+    try {
+      await this.scrcpy.start(serial, {
+        maxSize: this.config.mirror.maxSize,
+        maxFps: this.config.mirror.maxFps,
+        audio: this.config.mirror.audio,
+        control: true,
+        stayAwake: false,
+        turnScreenOff: false,
+        windowTitle: 'Android Device MCP',
+      });
+      this.autoMirrorError = null;
+    } catch (error) {
+      // Mirroring is an observation aid. Ordinary ADB tools must continue to
+      // work when scrcpy is missing, unsupported, or cannot open a display.
+      this.autoMirrorError = asAppError(error);
+    }
+  }
+
+  get autoMirrorWarning(): { code: string; message: string; retryable: boolean } | null {
+    if (this.autoMirrorError === null) return null;
+    return {
+      code: this.autoMirrorError.code,
+      message: `Visible scrcpy auto-start failed: ${this.autoMirrorError.message}`,
+      retryable: this.autoMirrorError.retryable,
+    };
+  }
+
+  async startMirror(
+    serial: string,
+    options: ScrcpyStartOptions,
+  ): Promise<Awaited<ReturnType<ScrcpyProcessManager['start']>>> {
+    const result = await this.scrcpy.start(serial, options);
+    this.autoMirrorError = null;
+    return result;
   }
 
   async screenObservation(serial?: string): Promise<ScreenObservation> {
@@ -485,7 +566,13 @@ export class AndroidDeviceService {
     return { before, after, beforePixelSha256, afterPixelSha256 };
   }
 
-  async longPress(x: number, y: number, durationMs: number): Promise<void> {
+  async longPress(
+    x: number,
+    y: number,
+    durationMs: number,
+    verifyChange = true,
+    verifyPixels = false,
+  ): Promise<ActionObservation> {
     const serial = await this.selectedSerial();
     await this.requireAllowedForeground('screen long press');
     const observation = await this.screenObservation(serial);
@@ -501,9 +588,31 @@ export class AndroidDeviceService {
         },
       );
     }
+    const before = verifyChange ? await this.captureUi() : null;
+    const beforePixelSha256 = verifyPixels ? await this.pixelDigest() : null;
     await this.requireAllowedForeground('screen long press before action');
     await this.input.longPress(serial, x, y, validateDuration(durationMs, 'durationMs', 30_000));
     await this.stabilize();
+    const after = verifyChange ? await this.captureUi() : null;
+    const afterPixelSha256 = verifyPixels ? await this.pixelDigest() : null;
+    return { before, after, beforePixelSha256, afterPixelSha256 };
+  }
+
+  async pressKey(
+    key: AllowedKey,
+    verifyChange = true,
+    verifyPixels = false,
+  ): Promise<ActionObservation> {
+    const serial = await this.selectedSerial();
+    await this.requireAllowedForeground('key press');
+    const before = verifyChange ? await this.captureUi() : null;
+    const beforePixelSha256 = verifyPixels ? await this.pixelDigest() : null;
+    await this.requireAllowedForeground('key press before action');
+    await this.input.key(serial, key);
+    await this.stabilize();
+    const after = verifyChange ? await this.captureUi() : null;
+    const afterPixelSha256 = verifyPixels ? await this.pixelDigest() : null;
+    return { before, after, beforePixelSha256, afterPixelSha256 };
   }
 
   async waitForUi(options: {
@@ -535,10 +644,7 @@ export class AndroidDeviceService {
         options.packageName === undefined || foreground.packageName === options.packageName;
       const activityMatches =
         options.activity === undefined || foreground.activity === options.activity;
-      const fingerprint =
-        snapshot === null
-          ? null
-          : JSON.stringify(snapshot.nodes.map((node) => [node.nodeId, node.text, node.bounds]));
+      const fingerprint = snapshot === null ? null : uiStateFingerprint(snapshot);
       const changed = previousFingerprint !== null && fingerprint !== previousFingerprint;
       const screenMatches = options.screenChange !== true || changed;
       const present = selectorMatches && packageMatches && activityMatches && screenMatches;

@@ -99,6 +99,7 @@ export const keyPressSchema = {
     'volume_down',
   ]),
   verify_change: z.boolean().optional(),
+  verify_pixels: z.boolean().optional(),
 };
 
 export const textTypeSchema = {
