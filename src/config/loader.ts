@@ -74,49 +74,61 @@ function booleanEnv(value: string | undefined): boolean | undefined {
   return undefined;
 }
 
+function environmentValue(
+  env: NodeJS.ProcessEnv,
+  canonicalName: string,
+  legacyName: string,
+): string | undefined {
+  return env[canonicalName] ?? env[legacyName];
+}
+
 function environmentOverrides(env: NodeJS.ProcessEnv): ConfigInput {
   const overrides: ConfigInput = {};
-  const allowedPackages = splitList(env.ANDROID_DEVICE_MCP_ALLOWED_PACKAGES);
-  const sensitivePackages = splitList(env.ANDROID_DEVICE_MCP_SENSITIVE_PACKAGES);
-  const allowedRuntimePermissions = splitList(env.ANDROID_DEVICE_MCP_ALLOWED_RUNTIME_PERMISSIONS);
-  const allowedApkRoots = splitList(env.ANDROID_DEVICE_MCP_ALLOWED_APK_ROOTS);
-  const mirrorAutoStart = booleanEnv(env.ANDROID_DEVICE_MCP_MIRROR_AUTO_START);
+  const value = (name: string): string | undefined =>
+    environmentValue(env, `ANDROID_MCP_${name}`, `ANDROID_DEVICE_MCP_${name}`);
+  const allowedPackages = splitList(value('ALLOWED_PACKAGES'));
+  const sensitivePackages = splitList(value('SENSITIVE_PACKAGES'));
+  const allowedRuntimePermissions = splitList(value('ALLOWED_RUNTIME_PERMISSIONS'));
+  const allowedApkRoots = splitList(value('ALLOWED_APK_ROOTS'));
+  const mirrorAutoStart = booleanEnv(value('MIRROR_AUTO_START'));
 
-  if (env.ANDROID_DEVICE_MCP_ADB_PATH !== undefined)
-    overrides.adbPath = env.ANDROID_DEVICE_MCP_ADB_PATH;
-  if (env.ANDROID_DEVICE_MCP_SCRCPY_PATH !== undefined)
-    overrides.scrcpyPath = env.ANDROID_DEVICE_MCP_SCRCPY_PATH;
-  if (env.ANDROID_DEVICE_MCP_AUTO_SELECT !== undefined) {
-    overrides.autoSelectSingleDevice = env.ANDROID_DEVICE_MCP_AUTO_SELECT === 'true';
+  const adbPath = value('ADB_PATH');
+  const scrcpyPath = value('SCRCPY_PATH');
+  const autoSelect = value('AUTO_SELECT');
+  const evidenceRoot = value('EVIDENCE_ROOT');
+  const approvalMode = value('APPROVAL_MODE');
+  if (adbPath !== undefined) overrides.adbPath = adbPath;
+  if (scrcpyPath !== undefined) overrides.scrcpyPath = scrcpyPath;
+  if (autoSelect !== undefined) {
+    overrides.autoSelectSingleDevice = autoSelect === 'true';
   }
   if (allowedPackages !== undefined) overrides.allowedPackages = allowedPackages;
   if (sensitivePackages !== undefined) overrides.sensitivePackages = sensitivePackages;
   if (allowedRuntimePermissions !== undefined)
     overrides.allowedRuntimePermissions = allowedRuntimePermissions;
   if (allowedApkRoots !== undefined) overrides.allowedApkRoots = allowedApkRoots;
-  if (env.ANDROID_DEVICE_MCP_EVIDENCE_ROOT !== undefined)
-    overrides.evidenceRoot = env.ANDROID_DEVICE_MCP_EVIDENCE_ROOT;
-  if (env.ANDROID_DEVICE_MCP_APPROVAL_MODE !== undefined) {
-    overrides.approvalMode = env.ANDROID_DEVICE_MCP_APPROVAL_MODE as ConfigInput['approvalMode'];
+  if (evidenceRoot !== undefined) overrides.evidenceRoot = evidenceRoot;
+  if (approvalMode !== undefined) {
+    overrides.approvalMode = approvalMode as ConfigInput['approvalMode'];
   }
   if (mirrorAutoStart !== undefined) overrides.mirror = { autoStart: mirrorAutoStart };
 
   const numericFields: Array<[keyof ConfigInput, string]> = [
-    ['maxScreenshotBytes', 'ANDROID_DEVICE_MCP_MAX_SCREENSHOT_BYTES'],
-    ['maxApkBytes', 'ANDROID_DEVICE_MCP_MAX_APK_BYTES'],
-    ['maxLogBytes', 'ANDROID_DEVICE_MCP_MAX_LOG_BYTES'],
-    ['maxCommandOutputBytes', 'ANDROID_DEVICE_MCP_MAX_COMMAND_OUTPUT_BYTES'],
-    ['maxEvidenceBytes', 'ANDROID_DEVICE_MCP_MAX_EVIDENCE_BYTES'],
-    ['maxEvidenceFiles', 'ANDROID_DEVICE_MCP_MAX_EVIDENCE_FILES'],
-    ['evidenceRetentionMaxAgeMs', 'ANDROID_DEVICE_MCP_EVIDENCE_RETENTION_MAX_AGE_MS'],
-    ['defaultTimeoutMs', 'ANDROID_DEVICE_MCP_DEFAULT_TIMEOUT_MS'],
-    ['uiSnapshotMaxAgeMs', 'ANDROID_DEVICE_MCP_UI_SNAPSHOT_MAX_AGE_MS'],
+    ['maxScreenshotBytes', 'MAX_SCREENSHOT_BYTES'],
+    ['maxApkBytes', 'MAX_APK_BYTES'],
+    ['maxLogBytes', 'MAX_LOG_BYTES'],
+    ['maxCommandOutputBytes', 'MAX_COMMAND_OUTPUT_BYTES'],
+    ['maxEvidenceBytes', 'MAX_EVIDENCE_BYTES'],
+    ['maxEvidenceFiles', 'MAX_EVIDENCE_FILES'],
+    ['evidenceRetentionMaxAgeMs', 'EVIDENCE_RETENTION_MAX_AGE_MS'],
+    ['defaultTimeoutMs', 'DEFAULT_TIMEOUT_MS'],
+    ['uiSnapshotMaxAgeMs', 'UI_SNAPSHOT_MAX_AGE_MS'],
   ];
 
   for (const [field, variable] of numericFields) {
-    const value = numberEnv(env[variable]);
-    if (value !== undefined) {
-      overrides[field] = value as never;
+    const numericValue = numberEnv(value(variable));
+    if (numericValue !== undefined) {
+      overrides[field] = numericValue as never;
     }
   }
 
@@ -163,7 +175,8 @@ export function loadConfig(
   options: { configPath?: string; env?: NodeJS.ProcessEnv } = {},
 ): ServerConfig {
   const env = options.env ?? process.env;
-  const configPath = options.configPath ?? env.ANDROID_DEVICE_MCP_CONFIG;
+  const configPath =
+    options.configPath ?? environmentValue(env, 'ANDROID_MCP_CONFIG', 'ANDROID_DEVICE_MCP_CONFIG');
   const fileConfig = configPath === undefined ? {} : readJsonConfig(configPath);
   const input = validateInput(fileConfig);
   const overrides = validateInput(environmentOverrides(env));
