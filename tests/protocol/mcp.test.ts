@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
+import { TOOL_METADATA } from '../../src/mcp/tool-registry.js';
+
 const repositoryRoot = process.cwd();
 const serverEntrypoint = join(repositoryRoot, 'dist-test', 'src', 'index.js');
 
@@ -29,9 +31,15 @@ test('MCP stdio server initializes with instructions and exposes stable tools', 
     assert.ok(instructions !== undefined && instructions.length <= 512);
     const tools = await client.listTools();
     const names = new Set(tools.tools.map((tool) => tool.name));
-    for (const expected of ['device_list', 'device_select', 'screen_capture', 'ui_dump', 'ui_tap', 'app_install', 'evidence_finish']) {
+    for (const expected of Object.keys(TOOL_METADATA)) {
       assert.ok(names.has(expected), `missing tool ${expected}`);
     }
+    assert.equal(tools.tools.length, Object.keys(TOOL_METADATA).length);
+    const installTool = tools.tools.find((tool) => tool.name === 'app_install');
+    assert.equal(installTool?.annotations?.readOnlyHint, false);
+    assert.equal(installTool?.annotations?.destructiveHint, true);
+    const captureTool = tools.tools.find((tool) => tool.name === 'screen_capture');
+    assert.equal(captureTool?.annotations?.readOnlyHint, true);
     const result = await client.callTool({ name: 'device_list', arguments: {} });
     const content = result.content as Array<{ type: 'text' | 'image'; text?: string }>;
     const text = content.find((item) => item.type === 'text');
