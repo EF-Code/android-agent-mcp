@@ -33,6 +33,7 @@ import {
 } from './schemas.js';
 import { AndroidDeviceService } from '../service.js';
 import type { UiSelector } from '../ui/types.js';
+import type { AllowedKey } from '../adb/input.js';
 
 function toSelector(selector: unknown): UiSelector {
   return selector as UiSelector;
@@ -86,7 +87,17 @@ function registerReadOnlyTools(server: McpServer, service: AndroidDeviceService)
   });
 
   server.registerTool('app_list', { description: 'List bounded package metadata from the selected device.', inputSchema: appListSchema, annotations: { readOnlyHint: true } }, async (args) => {
-    try { return jsonContent(ok(await service.packages.list(await service.selectedSerial(), args), { deviceSerial: await service.selectedSerial() })); } catch (error) { return toolError(error); }
+    try {
+      const serial = await service.selectedSerial();
+      const options = {
+        ...(args.third_party === undefined ? {} : { thirdParty: args.third_party }),
+        ...(args.system === undefined ? {} : { system: args.system }),
+        ...(args.enabled === undefined ? {} : { enabled: args.enabled }),
+        ...(args.disabled === undefined ? {} : { disabled: args.disabled }),
+        ...(args.limit === undefined ? {} : { limit: args.limit }),
+      };
+      return jsonContent(ok(await service.packages.list(serial, options), { deviceSerial: serial }));
+    } catch (error) { return toolError(error); }
   });
 
   server.registerTool('app_info', { description: 'Inspect metadata for an allowlisted package.', inputSchema: appPackageSchema, annotations: { readOnlyHint: true } }, async (args) => {
@@ -100,7 +111,19 @@ function registerReadOnlyTools(server: McpServer, service: AndroidDeviceService)
   server.registerTool('logcat_capture', { description: 'Capture bounded, filtered, and redacted logcat output.', inputSchema: logCaptureSchema, annotations: { readOnlyHint: true } }, async (args) => {
     try {
       if (args.package_name !== undefined) service.policy.assertPackageAllowed(args.package_name);
-      return jsonContent(ok(await service.logcat.capture(await service.selectedSerial(), args), { deviceSerial: await service.selectedSerial() }));
+      const serial = await service.selectedSerial();
+      const options = {
+        ...(args.package_name === undefined ? {} : { packageName: args.package_name }),
+        ...(args.pid === undefined ? {} : { pid: args.pid }),
+        ...(args.severity === undefined ? {} : { severity: args.severity }),
+        ...(args.tags === undefined ? {} : { tags: args.tags }),
+        ...(args.duration_ms === undefined ? {} : { durationMs: args.duration_ms }),
+        ...(args.since === undefined ? {} : { since: args.since }),
+        ...(args.max_lines === undefined ? {} : { maxLines: args.max_lines }),
+        ...(args.max_bytes === undefined ? {} : { maxBytes: args.max_bytes }),
+        ...(args.include_crash_buffer === undefined ? {} : { includeCrashBuffer: args.include_crash_buffer }),
+      };
+      return jsonContent(ok(await service.logcat.capture(serial, options), { deviceSerial: serial }));
     } catch (error) { return toolError(error); }
   });
 
@@ -136,7 +159,8 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
   server.registerTool('ui_tap', { description: 'Tap one uniquely resolved visible semantic UI element and verify the result.', inputSchema: uiTapSchema }, async (args) => {
     try {
       if (args.selector === undefined && args.node_id === undefined) throw new Error('selector or node_id is required');
-      const result = await service.tapSelector(args.selector === undefined ? { nodeId: args.node_id } : toSelector(args.selector), args.match_index);
+      const selector = args.selector === undefined ? { nodeId: args.node_id! } : toSelector(args.selector);
+      const result = await service.tapSelector(selector, args.match_index);
       return jsonContent(ok({ node_id: result.nodeId, before_snapshot_id: result.before.snapshotId, after_snapshot_id: result.after.snapshotId, changed: JSON.stringify(result.before.nodes) !== JSON.stringify(result.after.nodes) }, { deviceSerial: await service.selectedSerial(), warnings: result.after.warnings }));
     } catch (error) { return toolError(error); }
   });
@@ -146,7 +170,19 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
   });
 
   server.registerTool('screen_swipe', { description: 'Perform a bounded native coordinate or deterministic directional swipe.', inputSchema: swipeSchema }, async (args) => {
-    try { const result = await service.swipe({ startX: args.start_x, startY: args.start_y, endX: args.end_x, endY: args.end_y, direction: args.direction, durationMs: args.duration_ms, verifyChange: args.verify_change ?? true }); return jsonContent(ok({ before_snapshot_id: result.before?.snapshotId ?? null, after_snapshot_id: result.after?.snapshotId ?? null }, { deviceSerial: await service.selectedSerial() })); } catch (error) { return toolError(error); }
+    try {
+      const options = {
+        ...(args.start_x === undefined ? {} : { startX: args.start_x }),
+        ...(args.start_y === undefined ? {} : { startY: args.start_y }),
+        ...(args.end_x === undefined ? {} : { endX: args.end_x }),
+        ...(args.end_y === undefined ? {} : { endY: args.end_y }),
+        ...(args.direction === undefined ? {} : { direction: args.direction }),
+        ...(args.duration_ms === undefined ? {} : { durationMs: args.duration_ms }),
+        verifyChange: args.verify_change ?? true,
+      };
+      const result = await service.swipe(options);
+      return jsonContent(ok({ before_snapshot_id: result.before?.snapshotId ?? null, after_snapshot_id: result.after?.snapshotId ?? null }, { deviceSerial: await service.selectedSerial() }));
+    } catch (error) { return toolError(error); }
   });
 
   server.registerTool('screen_long_press', { description: 'Perform a bounded stationary long press.', inputSchema: { ...coordinateSchema, duration_ms: z.number().int().min(250).max(30_000).optional() } }, async (args) => {
@@ -170,7 +206,19 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
   });
 
   server.registerTool('wait_for_ui', { description: 'Poll for a bounded UI, foreground, disappearance, or screen-change condition.', inputSchema: waitForUiSchema }, async (args) => {
-    try { if (args.package_name !== undefined) service.policy.assertPackageAllowed(args.package_name); return jsonContent(ok(await service.waitForUi({ selector: args.selector === undefined ? undefined : toSelector(args.selector), packageName: args.package_name, activity: args.activity, disappearance: args.disappearance, screenChange: args.screen_change, timeoutMs: args.timeout_ms ?? 15_000, pollMs: args.poll_ms ?? 500 }), { deviceSerial: await service.selectedSerial() })); } catch (error) { return toolError(error); }
+    try {
+      if (args.package_name !== undefined) service.policy.assertPackageAllowed(args.package_name);
+      const options = {
+        ...(args.selector === undefined ? {} : { selector: toSelector(args.selector) }),
+        ...(args.package_name === undefined ? {} : { packageName: args.package_name }),
+        ...(args.activity === undefined ? {} : { activity: args.activity }),
+        ...(args.disappearance === undefined ? {} : { disappearance: args.disappearance }),
+        ...(args.screen_change === undefined ? {} : { screenChange: args.screen_change }),
+        timeoutMs: args.timeout_ms ?? 15_000,
+        pollMs: args.poll_ms ?? 500,
+      };
+      return jsonContent(ok(await service.waitForUi(options), { deviceSerial: await service.selectedSerial() }));
+    } catch (error) { return toolError(error); }
   });
 }
 
