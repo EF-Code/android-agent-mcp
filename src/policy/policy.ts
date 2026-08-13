@@ -1,6 +1,7 @@
 import { ErrorCode } from '../errors/codes.js';
 import { AppError } from '../errors/app-error.js';
 import type { ServerConfig } from '../config/types.js';
+import type { ForegroundApp } from '../types.js';
 
 function globToRegExp(pattern: string): RegExp {
   const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
@@ -34,6 +35,21 @@ export class Policy {
         details: { packageName, allowedPackagesConfigured: this.config.allowedPackages.length > 0 },
       });
     }
+  }
+
+  assertForegroundAllowed(foreground: ForegroundApp, operation: string): string {
+    if (foreground.packageName === null) {
+      throw new AppError(ErrorCode.ForegroundUnknown, `Foreground package must be observable before ${operation}.`, {
+        retryable: true,
+        details: { operation, foreground },
+      });
+    }
+    this.assertPackageAllowed(foreground.packageName);
+    return foreground.packageName;
+  }
+
+  assertObservationAllowed(foreground: ForegroundApp, operation: string): string {
+    return this.assertForegroundAllowed(foreground, operation);
   }
 
   assertMutationAllowed(operation: string): void {

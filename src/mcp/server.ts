@@ -5,7 +5,8 @@ import { z } from 'zod';
 
 import type { ServerConfig } from '../config/types.js';
 import { loadConfig } from '../config/loader.js';
-import { asAppError } from '../errors/app-error.js';
+import { AppError, asAppError } from '../errors/app-error.js';
+import { ErrorCode } from '../errors/codes.js';
 import { fail, ok } from '../errors/result.js';
 import { EvidenceSession } from '../evidence/recorder.js';
 import { SERVER_INSTRUCTIONS } from '../instructions.js';
@@ -71,8 +72,10 @@ function registerReadOnlyTools(server: McpServer, service: AndroidDeviceService)
   registerTool(server, 'screen_capture', { description: 'Capture a validated PNG screenshot from the selected device.', inputSchema: captureSchema }, async (args) => {
     try {
       const serial = await service.selectedSerial();
+      await service.requireCaptureForeground('screen capture');
       const screenshot = await service.screenshots.capture(serial);
       const observation = await service.screenObservation(serial);
+      await service.requireCaptureForeground('screen capture result');
       let evidenceDigest: unknown = null;
       if (args.save_to_evidence === true) {
         const session = service.evidence.requireActive();
@@ -124,6 +127,9 @@ function registerReadOnlyTools(server: McpServer, service: AndroidDeviceService)
   registerTool(server, 'logcat_capture', { description: 'Capture bounded, filtered, and redacted logcat output.', inputSchema: logCaptureSchema }, async (args) => {
     try {
       if (args.package_name !== undefined) service.policy.assertPackageAllowed(args.package_name);
+      if (args.package_name === undefined && args.pid === undefined) {
+        throw new AppError(ErrorCode.InvalidInput, 'Log capture requires a package name or PID filter.');
+      }
       const serial = await service.selectedSerial();
       const options = {
         ...(args.package_name === undefined ? {} : { packageName: args.package_name }),
@@ -153,6 +159,7 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
   registerTool(server, 'mirror_start', { description: 'Start a visible server-owned scrcpy mirror for the selected device.', inputSchema: mirrorStartSchema }, async (args) => {
     try {
       const serial = await service.selectedSerial();
+      await service.requireCaptureForeground('starting scrcpy mirror');
       return jsonContent(ok((await service.scrcpy.start(serial, {
         maxSize: args.max_size ?? service.config.mirror.maxSize,
         maxFps: args.max_fps ?? service.config.mirror.maxFps,
@@ -171,7 +178,7 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
 
   registerTool(server, 'ui_tap', { description: 'Tap one uniquely resolved visible semantic UI element and verify the result.', inputSchema: uiTapSchema }, async (args) => {
     try {
-      if (args.selector === undefined && args.node_id === undefined) throw new Error('selector or node_id is required');
+      if (args.selector === undefined && args.node_id === undefined) throw new AppError(ErrorCode.InvalidInput, 'selector or node_id is required');
       const selector = args.selector === undefined ? { nodeId: args.node_id! } : toSelector(args.selector);
       const result = await service.tapSelector(selector, args.match_index, args.verify_change ?? true);
       return jsonContent(ok({ node_id: result.nodeId, before_snapshot_id: result.before.snapshotId, after_snapshot_id: result.after?.snapshotId ?? null, changed: result.after === null ? null : JSON.stringify(result.before.nodes) !== JSON.stringify(result.after.nodes) }, { deviceSerial: await service.selectedSerial(), warnings: result.after?.warnings ?? result.before.warnings }));
@@ -179,11 +186,12 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
   });
 
   registerTool(server, 'screen_tap', { description: 'Tap validated native device-pixel coordinates as a fallback.', inputSchema: coordinateSchema }, async (args) => {
-    try { const result = await service.tapCoordinates(args.x, args.y, args.verify_change ?? true); return jsonContent(ok({ before_snapshot_id: result.before?.snapshotId ?? null, after_snapshot_id: result.after?.snapshotId ?? null, changed: result.before !== null && result.after !== null && JSON.stringify(result.before.nodes) !== JSON.stringify(result.after.nodes) }, { deviceSerial: await service.selectedSerial() })); } catch (error) { return toolError(error); }
+    try { await service.requireAllowedForeground('screen tap'); const result = await service.tapCoordinates(args.x, args.y, args.verify_change ?? true); return jsonContent(ok({ before_snapshot_id: result.before?.snapshotId ?? null, after_snapshot_id: result.after?.snapshotId ?? null, changed: result.before !== null && result.after !== null && JSON.stringify(result.before.nodes) !== JSON.stringify(result.after.nodes) }, { deviceSerial: await service.selectedSerial() })); } catch (error) { return toolError(error); }
   });
 
   registerTool(server, 'screen_swipe', { description: 'Perform a bounded native coordinate or deterministic directional swipe.', inputSchema: swipeSchema }, async (args) => {
     try {
+      await service.requireAllowedForeground('screen swipe');
       const options = {
         ...(args.start_x === undefined ? {} : { startX: args.start_x }),
         ...(args.start_y === undefined ? {} : { startY: args.start_y }),
@@ -199,15 +207,15 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
   });
 
   registerTool(server, 'screen_long_press', { description: 'Perform a bounded stationary long press.', inputSchema: { ...coordinateSchema, duration_ms: z.number().int().min(250).max(30_000).optional() } }, async (args) => {
-    try { const serial = await service.selectedSerial(); await service.longPress(args.x, args.y, args.duration_ms ?? 750); return jsonContent(ok({ x: args.x, y: args.y, duration_ms: args.duration_ms ?? 750 }, { deviceSerial: serial })); } catch (error) { return toolError(error); }
+    try { await service.requireAllowedForeground('screen long press'); const serial = await service.selectedSerial(); await service.longPress(args.x, args.y, args.duration_ms ?? 750); return jsonContent(ok({ x: args.x, y: args.y, duration_ms: args.duration_ms ?? 750 }, { deviceSerial: serial })); } catch (error) { return toolError(error); }
   });
 
   registerTool(server, 'key_press', { description: 'Press an allowlisted Android testing key.', inputSchema: keyPressSchema }, async (args) => {
-    try { const serial = await service.selectedSerial(); await service.input.key(serial, args.key as AllowedKey, args.allow_power ?? false); return jsonContent(ok({ key: args.key }, { deviceSerial: serial })); } catch (error) { return toolError(error); }
+    try { await service.requireAllowedForeground('key press'); const serial = await service.selectedSerial(); await service.input.key(serial, args.key as AllowedKey, args.allow_power ?? false); return jsonContent(ok({ key: args.key }, { deviceSerial: serial })); } catch (error) { return toolError(error); }
   });
 
   registerTool(server, 'text_type', { description: 'Type safe printable ASCII test text into the focused field; never use for secrets.', inputSchema: textTypeSchema }, async (args) => {
-    try { const foreground = await service.currentForeground(); if (foreground.packageName === null) throw new Error('No foreground package is observable'); service.policy.assertPackageAllowed(foreground.packageName); const snapshot = await service.captureUi(); if (snapshot.nodes.some((node) => node.flags.focused && node.flags.password)) throw new Error('Typing into password fields is blocked'); const count = await service.input.text(await service.selectedSerial(), args.text); return jsonContent(ok({ character_count: count }, { deviceSerial: await service.selectedSerial() })); } catch (error) { return toolError(error); }
+    try { await service.requireAllowedForeground('text entry'); const snapshot = await service.captureUi(); if (snapshot.nodes.some((node) => node.flags.focused && node.flags.password)) throw new AppError(ErrorCode.ProhibitedOperation, 'Typing into password fields is blocked.'); const count = await service.input.text(await service.selectedSerial(), args.text); return jsonContent(ok({ character_count: count }, { deviceSerial: await service.selectedSerial() })); } catch (error) { return toolError(error); }
   });
 
   registerTool(server, 'app_launch', { description: 'Launch an allowlisted package and verify it becomes foreground.', inputSchema: appPackageSchema }, async (args) => {

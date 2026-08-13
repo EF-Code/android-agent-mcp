@@ -13,6 +13,7 @@ import { AdbScreenshots } from './adb/screenshots.js';
 import { AdbUiAutomator } from './adb/ui-automator.js';
 import { EvidenceManager, type EvidenceSession } from './evidence/recorder.js';
 import { Policy } from './policy/policy.js';
+import { redactSensitiveUiText } from './policy/redaction.js';
 import { AppError } from './errors/app-error.js';
 import { ErrorCode } from './errors/codes.js';
 import type { ServerConfig } from './config/types.js';
@@ -105,18 +106,47 @@ export class AndroidDeviceService {
     const serial = await this.selectedSerial();
     const observation = await this.screenObservation(serial);
     const xml = await this.uiAutomator.dump(serial);
-    return this.snapshots.put(
-      parseUiAutomatorXml(xml, {
+    const snapshot = parseUiAutomatorXml(xml, {
         snapshotId: randomUUID(),
         capturedAt: new Date().toISOString(),
         display: observation.display,
         foreground: observation.foreground,
-      }),
-    );
+      });
+    const shouldRedact = observation.foreground.packageName === null || !this.policy.isPackageAllowed(observation.foreground.packageName) || this.policy.isSensitivePackage(observation.foreground.packageName);
+    const safeSnapshot: UiSnapshot = shouldRedact
+      ? {
+          ...snapshot,
+          nodes: snapshot.nodes.map((node) => ({
+            ...node,
+            text: redactSensitiveUiText(node.text),
+            contentDescription: redactSensitiveUiText(node.contentDescription),
+          })),
+          warnings: [
+            ...snapshot.warnings,
+            {
+              code: 'SENSITIVE_FOREGROUND_REDACTED',
+              message: 'UI text and content descriptions were redacted because foreground package authorization was unavailable or restrictive.',
+            },
+          ],
+        }
+      : snapshot;
+    return this.snapshots.put(safeSnapshot);
   }
 
   async currentForeground(): Promise<ForegroundApp> {
     return this.foreground.read(await this.selectedSerial());
+  }
+
+  async requireAllowedForeground(operation: string): Promise<ForegroundApp> {
+    const foreground = await this.currentForeground();
+    this.policy.assertForegroundAllowed(foreground, operation);
+    return foreground;
+  }
+
+  async requireCaptureForeground(operation: string): Promise<ForegroundApp> {
+    const foreground = await this.currentForeground();
+    this.policy.assertObservationAllowed(foreground, operation);
+    return foreground;
   }
 
   async stabilize(): Promise<void> {
@@ -136,12 +166,25 @@ export class AndroidDeviceService {
 
   async tapSelector(selector: UiSelector, matchIndex?: number, verifyChange = true): Promise<{ before: UiSnapshot; after: UiSnapshot | null; nodeId: string }> {
     const serial = await this.selectedSerial();
+    const foreground = await this.requireAllowedForeground('semantic tap');
     const before = await this.captureUi();
+    this.policy.assertForegroundAllowed(before.foreground, 'semantic tap');
+    if (before.foreground.packageName !== foreground.packageName || before.foreground.activity !== foreground.activity) {
+      throw new AppError(ErrorCode.StaleUiSnapshot, 'Foreground changed while preparing the semantic tap.', {
+        retryable: true,
+        details: { before: foreground, snapshot: before.foreground },
+      });
+    }
     const match = resolveUniqueMatch(before, selector, matchIndex);
     if (!match.node.flags.enabled || match.node.bounds === null || match.node.center === null) {
       throw new AppError(ErrorCode.UiElementNotFound, 'The selected UI element is not visible and enabled with valid bounds.');
     }
-    if (match.node.packageName !== null) this.policy.assertPackageAllowed(match.node.packageName);
+    if (match.node.packageName === null || match.node.packageName !== foreground.packageName) {
+      throw new AppError(ErrorCode.PackageNotAllowed, 'The semantic target package is missing or differs from the authorized foreground package.', {
+        details: { targetPackage: match.node.packageName, foregroundPackage: foreground.packageName },
+      });
+    }
+    this.policy.assertPackageAllowed(match.node.packageName);
     await this.input.tap(serial, match.node.center.x, match.node.center.y);
     await this.stabilize();
     const after = verifyChange ? await this.captureUi() : null;
@@ -150,6 +193,7 @@ export class AndroidDeviceService {
 
   async tapCoordinates(x: number, y: number, verifyChange: boolean): Promise<{ before: UiSnapshot | null; after: UiSnapshot | null }> {
     const serial = await this.selectedSerial();
+    await this.requireAllowedForeground('screen tap');
     const observation = await this.screenObservation(serial);
     validateCoordinate(x, 'x');
     validateCoordinate(y, 'y');
@@ -167,6 +211,7 @@ export class AndroidDeviceService {
 
   async swipe(options: { startX?: number; startY?: number; endX?: number; endY?: number; direction?: string; durationMs?: number; verifyChange: boolean }): Promise<{ before: UiSnapshot | null; after: UiSnapshot | null }> {
     const serial = await this.selectedSerial();
+    await this.requireAllowedForeground('screen swipe');
     const observation = await this.screenObservation(serial);
     const width = observation.display.width;
     const height = observation.display.height;
@@ -200,6 +245,7 @@ export class AndroidDeviceService {
 
   async longPress(x: number, y: number, durationMs: number): Promise<void> {
     const serial = await this.selectedSerial();
+    await this.requireAllowedForeground('screen long press');
     const observation = await this.screenObservation(serial);
     if (observation.display.width > 0 && (x >= observation.display.width || y >= observation.display.height)) {
       throw new AppError(ErrorCode.InvalidCoordinates, 'Long-press coordinates are outside the native device display bounds.', {

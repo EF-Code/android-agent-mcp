@@ -18,6 +18,10 @@ export function redactUiText(text: string | null, password: boolean): string | n
   return password && text !== null ? REDACTED : text;
 }
 
+export function redactSensitiveUiText(text: string | null): string | null {
+  return text === null ? null : REDACTED;
+}
+
 export function redactCommandArgs(args: string[], secretIndexes: ReadonlySet<number> = new Set()): string[] {
   return args.map((arg, index) => (secretIndexes.has(index) ? REDACTED : arg));
 }

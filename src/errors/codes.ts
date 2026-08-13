@@ -13,6 +13,7 @@ export const ErrorCode = {
   ExecutableNotFound: 'EXECUTABLE_NOT_FOUND',
   EvidencePathInvalid: 'EVIDENCE_PATH_INVALID',
   FileNotAllowed: 'FILE_NOT_ALLOWED',
+  ForegroundUnknown: 'FOREGROUND_UNKNOWN',
   InvalidCoordinates: 'INVALID_COORDINATES',
   InvalidInput: 'INVALID_INPUT',
   InvalidPackage: 'INVALID_PACKAGE',
