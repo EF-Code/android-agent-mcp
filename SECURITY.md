@@ -1,6 +1,6 @@
 # Security model
 
-Android Device MCP controls a USB-debug-authorized phone. That authorization is powerful and may expose private application state. Run the server only on a trusted workstation and select only a phone intended for development or testing.
+Android MCP controls a USB-debug-authorized phone. That authorization is powerful and may expose private application state. Run the server only on a trusted workstation and select only a phone intended for development or testing.
 
 ## Trust boundaries
 
