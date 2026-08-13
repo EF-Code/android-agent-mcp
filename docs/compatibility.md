@@ -20,7 +20,7 @@
 
 ## Rename compatibility
 
-- The canonical project, npm package, and CLI are `android-agent-mcp`, `@ef-code/android-agent-mcp`, and `android-agent-mcp`.
+- The canonical project, npm package, and CLI are all `android-agent-mcp`.
 - The former `android-mcp` and `scrcpy-agent` executables remain available as deprecated aliases during the 0.x migration.
 - Configuration precedence is `ANDROID_AGENT_MCP_*`, then deprecated `ANDROID_MCP_*`, then older `ANDROID_DEVICE_MCP_*`.
 - The MCP registration and protocol identity remain `android-device`, so existing client registrations only need an updated executable path when the checkout moves.
