@@ -100,12 +100,15 @@ export class AdbLogcat {
     const tags = validateTags(options.tags ?? []);
     const pid = options.pid ?? (options.packageName === undefined ? undefined : await this.pidForPackage(serial, options.packageName));
     if (pid !== undefined && (!Number.isSafeInteger(pid) || pid <= 0)) throw new AppError(ErrorCode.InvalidInput, 'PID is invalid.');
+    if (options.packageName !== undefined && pid === null) {
+      return { lines: [], text: '', truncated: false, durationMs: 0 };
+    }
     if (options.since !== undefined && !/^\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?$/u.test(options.since)) {
       throw new AppError(ErrorCode.InvalidInput, 'Logcat since timestamp must use logcat timestamp format.');
     }
 
     const args = ['logcat', '-v', 'threadtime', '-T', options.since ?? '1'];
-    if (pid !== undefined) args.push('--pid', String(pid));
+    if (pid !== undefined && pid !== null) args.push(`--pid=${pid}`);
     args.push('*:' + severity);
     for (const tag of tags) args.push(`${tag}:${severity}`);
     const started = performance.now();
