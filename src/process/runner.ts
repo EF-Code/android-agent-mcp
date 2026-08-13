@@ -86,11 +86,16 @@ export async function runCommand(
   if (options.maxOutputBytes < 1_024 || options.maxOutputBytes > 100_000_000) {
     throw new AppError(ErrorCode.InvalidInput, 'Command output limit is outside the safe range.');
   }
-  if (options.captureDurationMs !== undefined && (options.captureDurationMs < 0 || options.captureDurationMs > 120_000)) {
+  if (
+    options.captureDurationMs !== undefined &&
+    (options.captureDurationMs < 0 || options.captureDurationMs > 120_000)
+  ) {
     throw new AppError(ErrorCode.InvalidInput, 'Capture duration is outside the safe range.');
   }
   if (options.signal?.aborted) {
-    throw new AppError(ErrorCode.CommandTimeout, 'Command was aborted before it started.', { retryable: true });
+    throw new AppError(ErrorCode.CommandTimeout, 'Command was aborted before it started.', {
+      retryable: true,
+    });
   }
 
   const startedAt = performance.now();
@@ -148,10 +153,14 @@ export async function runCommand(
     }
 
     if (stdoutTruncated || stderrTruncated) {
-      failure ??= new AppError(ErrorCode.CommandOutputLimit, 'Command output exceeded the configured limit.', {
-        retryable: true,
-        details: { maxOutputBytes: options.maxOutputBytes },
-      });
+      failure ??= new AppError(
+        ErrorCode.CommandOutputLimit,
+        'Command output exceeded the configured limit.',
+        {
+          retryable: true,
+          details: { maxOutputBytes: options.maxOutputBytes },
+        },
+      );
       stopChild();
     }
   };
@@ -182,14 +191,22 @@ export async function runCommand(
     child.stderr?.on('data', (chunk: Buffer) => append('stderr', chunk));
     child.once('error', (error) => {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        failure ??= new AppError(ErrorCode.ExecutableNotFound, `Executable was not found: ${executable}`, {
-          details: { executable },
-        });
+        failure ??= new AppError(
+          ErrorCode.ExecutableNotFound,
+          `Executable was not found: ${executable}`,
+          {
+            details: { executable },
+          },
+        );
       } else {
-        failure ??= new AppError(ErrorCode.CommandFailed, `Unable to start executable: ${executable}`, {
-          details: { executable },
-          cause: error,
-        });
+        failure ??= new AppError(
+          ErrorCode.CommandFailed,
+          `Unable to start executable: ${executable}`,
+          {
+            details: { executable },
+            cause: error,
+          },
+        );
       }
     });
     child.once('close', (exitCode, signal) => {
@@ -217,13 +234,17 @@ export async function runCommand(
 
       if (exitCode !== 0 && !captureEnded) {
         reject(
-          new AppError(ErrorCode.CommandFailed, `Command exited with code ${exitCode ?? 'unknown'}.`, {
-            retryable: false,
-            details: {
-              command: commandRecord,
-              stderr: redactLogText(Buffer.concat(stderrParts).toString('utf8').slice(-4_000)),
+          new AppError(
+            ErrorCode.CommandFailed,
+            `Command exited with code ${exitCode ?? 'unknown'}.`,
+            {
+              retryable: false,
+              details: {
+                command: commandRecord,
+                stderr: redactLogText(Buffer.concat(stderrParts).toString('utf8').slice(-4_000)),
+              },
             },
-          }),
+          ),
         );
         return;
       }

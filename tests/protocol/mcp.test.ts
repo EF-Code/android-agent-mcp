@@ -71,18 +71,31 @@ test('returns image content and structured errors over MCP stdio', async () => {
   const client = new Client({ name: 'protocol-image-test', version: '1.0.0' });
   try {
     await client.connect(transport);
-    const selection = await client.callTool({ name: 'device_select', arguments: { serial: 'protocol-test' } });
+    const selection = await client.callTool({
+      name: 'device_select',
+      arguments: { serial: 'protocol-test' },
+    });
     assert.equal(selection.isError, false);
     const imageResult = await client.callTool({ name: 'screen_capture', arguments: {} });
-    const content = imageResult.content as Array<{ type: string; mimeType?: string; text?: string }>;
+    const content = imageResult.content as Array<{
+      type: string;
+      mimeType?: string;
+      text?: string;
+    }>;
     assert.ok(content.some((item) => item.type === 'image' && item.mimeType === 'image/png'));
     const companion = content.find((item) => item.type === 'text');
     assert.ok(companion?.text?.includes('"width": 1080'));
 
-    const invalidResult = await client.callTool({ name: 'screen_capture', arguments: { save_to_evidence: 'yes' } });
+    const invalidResult = await client.callTool({
+      name: 'screen_capture',
+      arguments: { save_to_evidence: 'yes' },
+    });
     assert.equal(invalidResult.isError, true);
 
-    const errorResult = await client.callTool({ name: 'app_clear_data', arguments: { package_name: 'com.example.app' } });
+    const errorResult = await client.callTool({
+      name: 'app_clear_data',
+      arguments: { package_name: 'com.example.app' },
+    });
     assert.equal(errorResult.isError, true);
     const errorContent = errorResult.content as Array<{ type: string; text?: string }>;
     const errorText = errorContent.find((item) => item.type === 'text')?.text ?? '';

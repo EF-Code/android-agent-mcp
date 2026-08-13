@@ -6,15 +6,22 @@ const REQUIRE_SCRCPY = process.argv.includes('--require-scrcpy');
 
 function runVersion(executable) {
   return new Promise((resolve) => {
-    const child = spawn(executable, ['--version'], { shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(executable, ['--version'], {
+      shell: false,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
     let stdout = '';
     let stderr = '';
     const timer = setTimeout(() => {
       child.kill('SIGTERM');
       resolve({ ok: false, message: `${executable} did not respond within 5 seconds.` });
     }, 5_000);
-    child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
-    child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
     child.once('error', (error) => {
       clearTimeout(timer);
       resolve({ ok: false, message: `${executable} is unavailable: ${error.message}` });
@@ -22,7 +29,14 @@ function runVersion(executable) {
     child.once('close', (code) => {
       clearTimeout(timer);
       const version = `${stdout}${stderr}`.trim().split(/\r?\n/u)[0] ?? '';
-      resolve(code === 0 ? { ok: true, message: version } : { ok: false, message: `${executable} exited with code ${code ?? 'unknown'}: ${version}` });
+      resolve(
+        code === 0
+          ? { ok: true, message: version }
+          : {
+              ok: false,
+              message: `${executable} exited with code ${code ?? 'unknown'}: ${version}`,
+            },
+      );
     });
   });
 }
@@ -44,10 +58,14 @@ const scrcpy = await runVersion('scrcpy');
 if (scrcpy.ok) {
   process.stdout.write(`scrcpy: ${scrcpy.message}\n`);
 } else if (REQUIRE_SCRCPY) {
-  process.stderr.write(`${scrcpy.message}\nInstall scrcpy or omit --require-scrcpy for headless validation.\n`);
+  process.stderr.write(
+    `${scrcpy.message}\nInstall scrcpy or omit --require-scrcpy for headless validation.\n`,
+  );
   process.exit(1);
 } else {
   process.stdout.write('scrcpy: unavailable (optional for headless tools)\n');
 }
 
-process.stdout.write('Environment checks passed. The server will not install packages, change udev rules, restart ADB, or use elevated privileges.\n');
+process.stdout.write(
+  'Environment checks passed. The server will not install packages, change udev rules, restart ADB, or use elevated privileges.\n',
+);

@@ -65,7 +65,9 @@ function environment(): NodeJS.ProcessEnv {
 }
 
 function isRunning(owner: OwnedScrcpy | null): owner is OwnedScrcpy {
-  return owner !== null && owner.exitCode === null && owner.signal === null && owner.spawnError === null;
+  return (
+    owner !== null && owner.exitCode === null && owner.signal === null && owner.spawnError === null
+  );
 }
 
 function terminate(owner: OwnedScrcpy): void {
@@ -104,7 +106,10 @@ export class ScrcpyProcessManager {
     private readonly runner?: CommandRunner,
   ) {}
 
-  async start(serial: string, options: ScrcpyStartOptions): Promise<{ alreadyRunning: boolean; status: ScrcpyStatus }> {
+  async start(
+    serial: string,
+    options: ScrcpyStartOptions,
+  ): Promise<{ alreadyRunning: boolean; status: ScrcpyStatus }> {
     validateSerial(serial);
     if (isRunning(this.owner)) return { alreadyRunning: true, status: this.status() };
     this.capabilities = await detectScrcpyCapabilities(this.scrcpyPath, this.runner?.run);
@@ -162,7 +167,8 @@ export class ScrcpyProcessManager {
       startedAt: owner?.startedAt ?? null,
       exitCode: owner?.exitCode ?? null,
       signal: owner?.signal ?? null,
-      diagnostic: owner === null ? '' : redactLogText(owner.spawnError ?? owner.stderr).slice(-32_000),
+      diagnostic:
+        owner === null ? '' : redactLogText(owner.spawnError ?? owner.stderr).slice(-32_000),
       diagnosticTruncated: owner?.stderrTruncated ?? false,
       capabilities: this.capabilities,
       detached: owner?.detached ?? false,
@@ -178,7 +184,8 @@ export class ScrcpyProcessManager {
     if (!isRunning(owner)) return this.status();
     terminate(owner);
     const deadline = Date.now() + 2_000;
-    while (isRunning(owner) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 25));
+    while (isRunning(owner) && Date.now() < deadline)
+      await new Promise((resolve) => setTimeout(resolve, 25));
     if (isRunning(owner)) forceTerminate(owner);
     return this.status();
   }

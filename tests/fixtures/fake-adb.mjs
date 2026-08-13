@@ -8,7 +8,9 @@ png.writeUInt32BE(1080, 16);
 png.writeUInt32BE(2400, 20);
 
 if (args[0] === 'devices') {
-  process.stdout.write('List of devices attached\nprotocol-test\tdevice model:Protocol_Test device:protocol\n');
+  process.stdout.write(
+    'List of devices attached\nprotocol-test\tdevice model:Protocol_Test device:protocol\n',
+  );
 } else if (args.includes('screencap')) {
   process.stdout.write(png);
 } else if (args.includes('dumpsys') && args.includes('activity')) {

@@ -22,14 +22,20 @@ function makeSnapshot(overrides: Partial<UiSnapshot> = {}): UiSnapshot {
 test('requires a fresh snapshot from the selected device session', () => {
   const store = new SnapshotStore(3_000);
   store.put(makeSnapshot());
-  assert.doesNotThrow(() => store.requireFresh('snapshot-1', {
-    foreground: { packageName: 'com.example.app', activity: '.Main', pid: 1 },
-    deviceSerial: 'serial-1',
-    deviceSessionId: 'session-1',
-  }));
+  assert.doesNotThrow(() =>
+    store.requireFresh('snapshot-1', {
+      foreground: { packageName: 'com.example.app', activity: '.Main', pid: 1 },
+      deviceSerial: 'serial-1',
+      deviceSessionId: 'session-1',
+    }),
+  );
   assert.throws(() => store.requireFresh('snapshot-1', { deviceSerial: 'serial-2' }));
   assert.throws(() => store.requireFresh('snapshot-1', { deviceSessionId: 'session-2' }));
-  assert.throws(() => store.requireFresh('snapshot-1', { foreground: { packageName: 'com.example.other', activity: '.Main', pid: 1 } }));
+  assert.throws(() =>
+    store.requireFresh('snapshot-1', {
+      foreground: { packageName: 'com.example.other', activity: '.Main', pid: 1 },
+    }),
+  );
 });
 
 test('invalidating snapshots rejects retained node references', () => {

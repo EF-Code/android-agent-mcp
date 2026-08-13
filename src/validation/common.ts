@@ -17,9 +17,13 @@ export function validateSerial(serial: string): string {
 
 export function validatePackageName(packageName: string): string {
   if (!PACKAGE_PATTERN.test(packageName) || packageName.length > 255) {
-    throw new AppError(ErrorCode.InvalidPackage, 'Package name is not a valid Android package name.', {
-      details: { packageName },
-    });
+    throw new AppError(
+      ErrorCode.InvalidPackage,
+      'Package name is not a valid Android package name.',
+      {
+        details: { packageName },
+      },
+    );
   }
 
   return packageName;
@@ -37,9 +41,13 @@ export function validateCoordinate(value: number, name: string): number {
 
 export function validateDuration(value: number, name: string, maximum: number): number {
   if (!Number.isInteger(value) || value < 0 || value > maximum) {
-    throw new AppError(ErrorCode.InvalidInput, `${name} must be an integer between 0 and ${maximum}.`, {
-      details: { name, value, maximum },
-    });
+    throw new AppError(
+      ErrorCode.InvalidInput,
+      `${name} must be an integer between 0 and ${maximum}.`,
+      {
+        details: { name, value, maximum },
+      },
+    );
   }
 
   return value;

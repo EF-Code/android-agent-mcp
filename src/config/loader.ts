@@ -23,7 +23,11 @@ const configInputSchema = z
     maxCommandOutputBytes: z.number().int().min(1_024).max(100_000_000),
     maxEvidenceBytes: z.number().int().min(1_024).max(1_000_000_000),
     maxEvidenceFiles: z.number().int().min(1).max(10_000),
-    evidenceRetentionMaxAgeMs: z.number().int().min(60 * 60 * 1_000).max(365 * 24 * 60 * 60 * 1_000),
+    evidenceRetentionMaxAgeMs: z
+      .number()
+      .int()
+      .min(60 * 60 * 1_000)
+      .max(365 * 24 * 60 * 60 * 1_000),
     defaultTimeoutMs: z.number().int().min(250).max(120_000),
     uiSnapshotMaxAgeMs: z.number().int().min(250).max(60_000),
     approvalMode: z.enum(['prompt', 'allow', 'deny']),
@@ -67,15 +71,18 @@ function environmentOverrides(env: NodeJS.ProcessEnv): ConfigInput {
   const sensitivePackages = splitList(env.ANDROID_DEVICE_MCP_SENSITIVE_PACKAGES);
   const allowedApkRoots = splitList(env.ANDROID_DEVICE_MCP_ALLOWED_APK_ROOTS);
 
-  if (env.ANDROID_DEVICE_MCP_ADB_PATH !== undefined) overrides.adbPath = env.ANDROID_DEVICE_MCP_ADB_PATH;
-  if (env.ANDROID_DEVICE_MCP_SCRCPY_PATH !== undefined) overrides.scrcpyPath = env.ANDROID_DEVICE_MCP_SCRCPY_PATH;
+  if (env.ANDROID_DEVICE_MCP_ADB_PATH !== undefined)
+    overrides.adbPath = env.ANDROID_DEVICE_MCP_ADB_PATH;
+  if (env.ANDROID_DEVICE_MCP_SCRCPY_PATH !== undefined)
+    overrides.scrcpyPath = env.ANDROID_DEVICE_MCP_SCRCPY_PATH;
   if (env.ANDROID_DEVICE_MCP_AUTO_SELECT !== undefined) {
     overrides.autoSelectSingleDevice = env.ANDROID_DEVICE_MCP_AUTO_SELECT === 'true';
   }
   if (allowedPackages !== undefined) overrides.allowedPackages = allowedPackages;
   if (sensitivePackages !== undefined) overrides.sensitivePackages = sensitivePackages;
   if (allowedApkRoots !== undefined) overrides.allowedApkRoots = allowedApkRoots;
-  if (env.ANDROID_DEVICE_MCP_EVIDENCE_ROOT !== undefined) overrides.evidenceRoot = env.ANDROID_DEVICE_MCP_EVIDENCE_ROOT;
+  if (env.ANDROID_DEVICE_MCP_EVIDENCE_ROOT !== undefined)
+    overrides.evidenceRoot = env.ANDROID_DEVICE_MCP_EVIDENCE_ROOT;
   if (env.ANDROID_DEVICE_MCP_APPROVAL_MODE !== undefined) {
     overrides.approvalMode = env.ANDROID_DEVICE_MCP_APPROVAL_MODE as ConfigInput['approvalMode'];
   }
@@ -104,18 +111,26 @@ function environmentOverrides(env: NodeJS.ProcessEnv): ConfigInput {
 
 function readJsonConfig(configPath: string): unknown {
   if (!existsSync(configPath)) {
-    throw new AppError(ErrorCode.ConfigurationInvalid, `Configuration file does not exist: ${configPath}`, {
-      details: { configPath },
-    });
+    throw new AppError(
+      ErrorCode.ConfigurationInvalid,
+      `Configuration file does not exist: ${configPath}`,
+      {
+        details: { configPath },
+      },
+    );
   }
 
   try {
     return JSON.parse(readFileSync(configPath, 'utf8')) as unknown;
   } catch (error) {
-    throw new AppError(ErrorCode.ConfigurationInvalid, `Configuration file is not valid JSON: ${configPath}`, {
-      details: { configPath },
-      cause: error,
-    });
+    throw new AppError(
+      ErrorCode.ConfigurationInvalid,
+      `Configuration file is not valid JSON: ${configPath}`,
+      {
+        details: { configPath },
+        cause: error,
+      },
+    );
   }
 }
 
@@ -130,7 +145,9 @@ function validateInput(input: unknown): ConfigInput {
   return result.data;
 }
 
-export function loadConfig(options: { configPath?: string; env?: NodeJS.ProcessEnv } = {}): ServerConfig {
+export function loadConfig(
+  options: { configPath?: string; env?: NodeJS.ProcessEnv } = {},
+): ServerConfig {
   const env = options.env ?? process.env;
   const configPath = options.configPath ?? env.ANDROID_DEVICE_MCP_CONFIG;
   const fileConfig = configPath === undefined ? {} : readJsonConfig(configPath);
@@ -143,29 +160,43 @@ export function loadConfig(options: { configPath?: string; env?: NodeJS.ProcessE
     maxFps: overrides.mirror?.maxFps ?? input.mirror?.maxFps ?? defaults.mirror.maxFps,
     audio: overrides.mirror?.audio ?? input.mirror?.audio ?? defaults.mirror.audio,
     leaveRunningOnExit:
-      overrides.mirror?.leaveRunningOnExit ?? input.mirror?.leaveRunningOnExit ?? defaults.mirror.leaveRunningOnExit,
+      overrides.mirror?.leaveRunningOnExit ??
+      input.mirror?.leaveRunningOnExit ??
+      defaults.mirror.leaveRunningOnExit,
   };
 
   return {
     adbPath: overrides.adbPath ?? input.adbPath ?? defaults.adbPath,
     scrcpyPath: overrides.scrcpyPath ?? input.scrcpyPath ?? defaults.scrcpyPath,
     autoSelectSingleDevice:
-      overrides.autoSelectSingleDevice ?? input.autoSelectSingleDevice ?? defaults.autoSelectSingleDevice,
+      overrides.autoSelectSingleDevice ??
+      input.autoSelectSingleDevice ??
+      defaults.autoSelectSingleDevice,
     allowedPackages: overrides.allowedPackages ?? input.allowedPackages ?? defaults.allowedPackages,
-    sensitivePackages: overrides.sensitivePackages ?? input.sensitivePackages ?? defaults.sensitivePackages,
+    sensitivePackages:
+      overrides.sensitivePackages ?? input.sensitivePackages ?? defaults.sensitivePackages,
     allowedApkRoots: overrides.allowedApkRoots ?? input.allowedApkRoots ?? defaults.allowedApkRoots,
     evidenceRoot: overrides.evidenceRoot ?? input.evidenceRoot ?? defaults.evidenceRoot,
-    maxScreenshotBytes: overrides.maxScreenshotBytes ?? input.maxScreenshotBytes ?? defaults.maxScreenshotBytes,
+    maxScreenshotBytes:
+      overrides.maxScreenshotBytes ?? input.maxScreenshotBytes ?? defaults.maxScreenshotBytes,
     maxApkBytes: overrides.maxApkBytes ?? input.maxApkBytes ?? defaults.maxApkBytes,
     maxLogBytes: overrides.maxLogBytes ?? input.maxLogBytes ?? defaults.maxLogBytes,
     maxCommandOutputBytes:
-      overrides.maxCommandOutputBytes ?? input.maxCommandOutputBytes ?? defaults.maxCommandOutputBytes,
-    maxEvidenceBytes: overrides.maxEvidenceBytes ?? input.maxEvidenceBytes ?? defaults.maxEvidenceBytes,
-    maxEvidenceFiles: overrides.maxEvidenceFiles ?? input.maxEvidenceFiles ?? defaults.maxEvidenceFiles,
+      overrides.maxCommandOutputBytes ??
+      input.maxCommandOutputBytes ??
+      defaults.maxCommandOutputBytes,
+    maxEvidenceBytes:
+      overrides.maxEvidenceBytes ?? input.maxEvidenceBytes ?? defaults.maxEvidenceBytes,
+    maxEvidenceFiles:
+      overrides.maxEvidenceFiles ?? input.maxEvidenceFiles ?? defaults.maxEvidenceFiles,
     evidenceRetentionMaxAgeMs:
-      overrides.evidenceRetentionMaxAgeMs ?? input.evidenceRetentionMaxAgeMs ?? defaults.evidenceRetentionMaxAgeMs,
-    defaultTimeoutMs: overrides.defaultTimeoutMs ?? input.defaultTimeoutMs ?? defaults.defaultTimeoutMs,
-    uiSnapshotMaxAgeMs: overrides.uiSnapshotMaxAgeMs ?? input.uiSnapshotMaxAgeMs ?? defaults.uiSnapshotMaxAgeMs,
+      overrides.evidenceRetentionMaxAgeMs ??
+      input.evidenceRetentionMaxAgeMs ??
+      defaults.evidenceRetentionMaxAgeMs,
+    defaultTimeoutMs:
+      overrides.defaultTimeoutMs ?? input.defaultTimeoutMs ?? defaults.defaultTimeoutMs,
+    uiSnapshotMaxAgeMs:
+      overrides.uiSnapshotMaxAgeMs ?? input.uiSnapshotMaxAgeMs ?? defaults.uiSnapshotMaxAgeMs,
     approvalMode: overrides.approvalMode ?? input.approvalMode ?? defaults.approvalMode,
     mirror,
   };

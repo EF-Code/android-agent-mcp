@@ -27,7 +27,16 @@ const device: DeviceInfo = {
 test('creates sanitized evidence manifest and summary', async () => {
   const root = await mkdtemp(join(tmpdir(), 'android-device-mcp-'));
   const manager = new EvidenceManager(root, 1_000_000, 20);
-  const session = await manager.begin({ serverVersion: 'test', adbVersion: 'adb', scrcpyVersion: null, device, metadata: { token: 'secret-value' } }, 'test');
+  const session = await manager.begin(
+    {
+      serverVersion: 'test',
+      adbVersion: 'adb',
+      scrcpyVersion: null,
+      device,
+      metadata: { token: 'secret-value' },
+    },
+    'test',
+  );
   await session.note('password=secret-value');
   await session.saveLog('log', 'Authorization: Bearer secret-value');
   const summary = await manager.finish();
@@ -35,25 +44,41 @@ test('creates sanitized evidence manifest and summary', async () => {
   assert.ok(manifest.includes('…1234'));
   assert.ok(!manifest.includes('secret-value'));
   assert.ok(summary.files.length >= 2);
-  assert.ok((await readFile(summary.summaryPath, 'utf8')).includes('# Android Device MCP Evidence'));
+  assert.ok(
+    (await readFile(summary.summaryPath, 'utf8')).includes('# Android Device MCP Evidence'),
+  );
 });
 
 test('prevents a second active evidence session', async () => {
   const root = await mkdtemp(join(tmpdir(), 'android-device-mcp-'));
   const manager = new EvidenceManager(root, 1_000_000, 20);
-  await manager.begin({ serverVersion: 'test', adbVersion: null, scrcpyVersion: null, device }, 'first');
-  await assert.rejects(() => manager.begin({ serverVersion: 'test', adbVersion: null, scrcpyVersion: null, device }, 'second'));
+  await manager.begin(
+    { serverVersion: 'test', adbVersion: null, scrcpyVersion: null, device },
+    'first',
+  );
+  await assert.rejects(() =>
+    manager.begin(
+      { serverVersion: 'test', adbVersion: null, scrcpyVersion: null, device },
+      'second',
+    ),
+  );
   await manager.finish();
 });
 
 test('pauses recording and digests action and summary files', async () => {
   const root = await mkdtemp(join(tmpdir(), 'android-device-mcp-'));
   const manager = new EvidenceManager(root, 1_000_000, 20);
-  const session = await manager.begin({ serverVersion: 'test', adbVersion: null, scrcpyVersion: null, device }, 'pause');
+  const session = await manager.begin(
+    { serverVersion: 'test', adbVersion: null, scrcpyVersion: null, device },
+    'pause',
+  );
   await session.action('safe', { input: 'omitted' });
   session.pause('sensitive foreground');
   await session.action('blocked', { token: 'secret-value' });
-  await assert.rejects(() => session.saveLog('blocked', 'secret-value'), (error: unknown) => error instanceof Error && error.message.includes('paused'));
+  await assert.rejects(
+    () => session.saveLog('blocked', 'secret-value'),
+    (error: unknown) => error instanceof Error && error.message.includes('paused'),
+  );
   const summary = await manager.finish();
   assert.ok(summary.files.some((file) => file.path === 'actions.jsonl'));
   assert.ok(summary.files.some((file) => file.path === 'summary.md'));
@@ -67,7 +92,10 @@ test('prunes only expired evidence directories below the configured root', async
   const oldDate = new Date(Date.now() - 10_000);
   await utimes(oldDirectory, oldDate, oldDate);
   const manager = new EvidenceManager(root, 1_000_000, 20, 1_000);
-  await manager.begin({ serverVersion: 'test', adbVersion: null, scrcpyVersion: null, device }, 'new');
+  await manager.begin(
+    { serverVersion: 'test', adbVersion: null, scrcpyVersion: null, device },
+    'new',
+  );
   await assert.rejects(() => stat(oldDirectory));
   await manager.finish();
 });

@@ -22,7 +22,11 @@ function run(command, args) {
         resolvePromise();
         return;
       }
-      reject(new Error(`${command} ${args.join(' ')} failed with ${signal ?? `exit code ${code ?? 'unknown'}`}.`));
+      reject(
+        new Error(
+          `${command} ${args.join(' ')} failed with ${signal ?? `exit code ${code ?? 'unknown'}`}.`,
+        ),
+      );
     });
   });
 }
@@ -42,10 +46,13 @@ if (!skipDependencies) {
   await run(process.execPath, [npmCli, 'ci']);
 }
 
-if (checkEnvironment) await run(process.execPath, [join(projectRoot, 'scripts', 'check-environment.mjs')]);
+if (checkEnvironment)
+  await run(process.execPath, [join(projectRoot, 'scripts', 'check-environment.mjs')]);
 await run(process.execPath, [npmCli, 'run', 'build']);
 
 const entrypoint = join(projectRoot, 'dist', 'index.js');
-process.stdout.write(`\nLocal installation is ready.\nMCP entrypoint: ${entrypoint}\nRun: node ${entrypoint}\n`);
+process.stdout.write(
+  `\nLocal installation is ready.\nMCP entrypoint: ${entrypoint}\nRun: node ${entrypoint}\n`,
+);
 process.stdout.write(`Codex registration: codex mcp add android-device -- node ${entrypoint}\n`);
 process.stdout.write('Restart Codex after registration so the server and tools are reloaded.\n');

@@ -25,10 +25,18 @@ function isPotentiallyUnsafeRegex(pattern: string): boolean {
 }
 
 export function compileBoundedRegex(pattern: string): RegExp {
-  if (pattern.length === 0 || pattern.length > MAX_SELECTOR_TEXT || isPotentiallyUnsafeRegex(pattern)) {
-    throw new AppError(ErrorCode.InvalidSelector, 'Regex selector is empty, too long, or potentially unsafe.', {
-      details: { length: pattern.length },
-    });
+  if (
+    pattern.length === 0 ||
+    pattern.length > MAX_SELECTOR_TEXT ||
+    isPotentiallyUnsafeRegex(pattern)
+  ) {
+    throw new AppError(
+      ErrorCode.InvalidSelector,
+      'Regex selector is empty, too long, or potentially unsafe.',
+      {
+        details: { length: pattern.length },
+      },
+    );
   }
 
   try {
@@ -38,20 +46,32 @@ export function compileBoundedRegex(pattern: string): RegExp {
   }
 }
 
-function validateString(value: string | undefined, field: string, mode: SelectorMatchMode | undefined): void {
+function validateString(
+  value: string | undefined,
+  field: string,
+  mode: SelectorMatchMode | undefined,
+): void {
   if (value === undefined) {
     if (mode !== undefined) {
-      throw new AppError(ErrorCode.InvalidSelector, `${field} match mode requires a selector value.`, {
-        details: { field },
-      });
+      throw new AppError(
+        ErrorCode.InvalidSelector,
+        `${field} match mode requires a selector value.`,
+        {
+          details: { field },
+        },
+      );
     }
     return;
   }
 
   if (value.length === 0 || value.length > MAX_SELECTOR_TEXT) {
-    throw new AppError(ErrorCode.InvalidSelector, `${field} must contain between 1 and 512 characters.`, {
-      details: { field, length: value.length },
-    });
+    throw new AppError(
+      ErrorCode.InvalidSelector,
+      `${field} must contain between 1 and 512 characters.`,
+      {
+        details: { field, length: value.length },
+      },
+    );
   }
 
   const normalizedMode = validateMatchMode(mode, field);
@@ -67,22 +87,38 @@ export function validateSelector(selector: UiSelector, depth = 0): UiSelector {
     });
   }
 
-  if (selector.nodeId !== undefined && (selector.nodeId.length === 0 || selector.nodeId.length > 128)) {
+  if (
+    selector.nodeId !== undefined &&
+    (selector.nodeId.length === 0 || selector.nodeId.length > 128)
+  ) {
     throw new AppError(ErrorCode.InvalidSelector, 'Snapshot-local node ID is invalid.');
   }
 
   validateString(selector.text, 'text', selector.textMode);
-  validateString(selector.contentDescription, 'contentDescription', selector.contentDescriptionMode);
+  validateString(
+    selector.contentDescription,
+    'contentDescription',
+    selector.contentDescriptionMode,
+  );
 
-  if (selector.resourceId !== undefined && (selector.resourceId.length === 0 || selector.resourceId.length > 512)) {
+  if (
+    selector.resourceId !== undefined &&
+    (selector.resourceId.length === 0 || selector.resourceId.length > 512)
+  ) {
     throw new AppError(ErrorCode.InvalidSelector, 'resourceId selector is invalid.');
   }
 
-  if (selector.className !== undefined && (selector.className.length === 0 || selector.className.length > 512)) {
+  if (
+    selector.className !== undefined &&
+    (selector.className.length === 0 || selector.className.length > 512)
+  ) {
     throw new AppError(ErrorCode.InvalidSelector, 'className selector is invalid.');
   }
 
-  if (selector.packageName !== undefined && (selector.packageName.length === 0 || selector.packageName.length > 255)) {
+  if (
+    selector.packageName !== undefined &&
+    (selector.packageName.length === 0 || selector.packageName.length > 255)
+  ) {
     throw new AppError(ErrorCode.InvalidSelector, 'packageName selector is invalid.');
   }
 

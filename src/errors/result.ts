@@ -1,7 +1,10 @@
 import type { ErrorEnvelope, ResultEnvelope, SuccessEnvelope, Warning } from '../types.js';
 import { asAppError } from './app-error.js';
 
-export function ok<T>(data: T, options: { deviceSerial?: string; warnings?: Warning[] } = {}): SuccessEnvelope<T> {
+export function ok<T>(
+  data: T,
+  options: { deviceSerial?: string; warnings?: Warning[] } = {},
+): SuccessEnvelope<T> {
   const envelope: SuccessEnvelope<T> = {
     ok: true,
     observed_at: new Date().toISOString(),

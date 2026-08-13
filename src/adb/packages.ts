@@ -62,23 +62,42 @@ export class AdbPackages {
 
   async list(
     serial: string,
-    options: { thirdParty?: boolean; system?: boolean; enabled?: boolean; disabled?: boolean; limit?: number } = {},
+    options: {
+      thirdParty?: boolean;
+      system?: boolean;
+      enabled?: boolean;
+      disabled?: boolean;
+      limit?: number;
+    } = {},
   ): Promise<PackageSummary[]> {
     if (options.enabled === true && options.disabled === true) {
-      throw new AppError(ErrorCode.InvalidInput, 'app.list cannot request both enabled and disabled packages.');
+      throw new AppError(
+        ErrorCode.InvalidInput,
+        'app.list cannot request both enabled and disabled packages.',
+      );
     }
     if (options.thirdParty === true && options.system === true) {
-      throw new AppError(ErrorCode.InvalidInput, 'app.list cannot request both third-party and system packages.');
+      throw new AppError(
+        ErrorCode.InvalidInput,
+        'app.list cannot request both third-party and system packages.',
+      );
     }
 
-    const command = (flags: string[]): Promise<string> => this.adb.text(this.adb.shell(serial, ['pm', 'list', 'packages', ...flags], { timeoutMs: 20_000, maxOutputBytes: 2_000_000 }));
-    const [allOutput, thirdPartyOutput, systemOutput, enabledOutput, disabledOutput] = await Promise.all([
-      command(['-f']),
-      command(['-3']),
-      command(['-s']),
-      command(['-e']),
-      command(['-d']),
-    ]);
+    const command = (flags: string[]): Promise<string> =>
+      this.adb.text(
+        this.adb.shell(serial, ['pm', 'list', 'packages', ...flags], {
+          timeoutMs: 20_000,
+          maxOutputBytes: 2_000_000,
+        }),
+      );
+    const [allOutput, thirdPartyOutput, systemOutput, enabledOutput, disabledOutput] =
+      await Promise.all([
+        command(['-f']),
+        command(['-3']),
+        command(['-s']),
+        command(['-e']),
+        command(['-d']),
+      ]);
     const thirdParty = new Set(parsePackageLines(thirdPartyOutput));
     const system = new Set(parsePackageLines(systemOutput));
     const enabled = new Set(parsePackageLines(enabledOutput));
@@ -90,24 +109,32 @@ export class AdbPackages {
         system: system.has(packageName) ? true : thirdParty.has(packageName) ? false : null,
         enabled: enabled.has(packageName) ? true : disabled.has(packageName) ? false : null,
       }))
-      .filter((entry) => options.thirdParty === undefined || entry.thirdParty === options.thirdParty)
+      .filter(
+        (entry) => options.thirdParty === undefined || entry.thirdParty === options.thirdParty,
+      )
       .filter((entry) => options.system === undefined || entry.system === options.system)
       .filter((entry) => options.enabled === undefined || entry.enabled === options.enabled)
-      .filter((entry) => options.disabled === undefined || (options.disabled ? entry.enabled === false : entry.enabled !== false))
+      .filter(
+        (entry) =>
+          options.disabled === undefined ||
+          (options.disabled ? entry.enabled === false : entry.enabled !== false),
+      )
       .slice(0, options.limit ?? 2_000);
   }
 
   async info(serial: string, packageName: string): Promise<PackageInfo> {
-    const output = await this.adb.text(this.adb.shell(serial, ['dumpsys', 'package', packageName], {
-      timeoutMs: 20_000,
-      maxOutputBytes: 1_000_000,
-    }));
+    const output = await this.adb.text(
+      this.adb.shell(serial, ['dumpsys', 'package', packageName], {
+        timeoutMs: 20_000,
+        maxOutputBytes: 1_000_000,
+      }),
+    );
     const requestedPermissions = [...output.matchAll(/^\s*([A-Za-z0-9_.-]+)\s*$/gmu)]
       .map((match) => match[1]!)
       .filter((permission) => permission.startsWith('android.permission.'));
-    const grantedRuntimePermissions = [...output.matchAll(/^\s*(android\.permission\.[A-Za-z0-9_.-]+): granted=true/mgu)].map(
-      (match) => match[1]!,
-    );
+    const grantedRuntimePermissions = [
+      ...output.matchAll(/^\s*(android\.permission\.[A-Za-z0-9_.-]+): granted=true/gmu),
+    ].map((match) => match[1]!);
     const launcherActivity = await this.resolveLauncherActivity(serial, packageName);
     return {
       packageName,
@@ -121,16 +148,26 @@ export class AdbPackages {
       launcherActivity,
       requestedPermissions: [...new Set(requestedPermissions)].slice(0, 500),
       grantedRuntimePermissions: [...new Set(grantedRuntimePermissions)].slice(0, 500),
-      enabled: output.includes('enabled=true') ? true : output.includes('enabled=false') ? false : null,
-      debuggable: /DEBUGGABLE(?:\s|$)/u.test(output) ? true : /DEBUGGABLE=false/u.test(output) ? false : null,
+      enabled: output.includes('enabled=true')
+        ? true
+        : output.includes('enabled=false')
+          ? false
+          : null,
+      debuggable: /DEBUGGABLE(?:\s|$)/u.test(output)
+        ? true
+        : /DEBUGGABLE=false/u.test(output)
+          ? false
+          : null,
     };
   }
 
   async resolveLauncherActivity(serial: string, packageName: string): Promise<string | null> {
-    const output = await this.adb.text(this.adb.shell(serial, ['cmd', 'package', 'resolve-activity', '--brief', packageName], {
-      timeoutMs: 10_000,
-      maxOutputBytes: 16_000,
-    }));
+    const output = await this.adb.text(
+      this.adb.shell(serial, ['cmd', 'package', 'resolve-activity', '--brief', packageName], {
+        timeoutMs: 10_000,
+        maxOutputBytes: 16_000,
+      }),
+    );
     const component = output
       .split(/\r?\n/u)
       .map((line) => line.trim())
@@ -138,28 +175,47 @@ export class AdbPackages {
     return component ?? null;
   }
 
-  async launch(serial: string, packageName: string): Promise<{ component: string | null; output: string }> {
+  async launch(
+    serial: string,
+    packageName: string,
+  ): Promise<{ component: string | null; output: string }> {
     const component = await this.resolveLauncherActivity(serial, packageName);
     if (component !== null) {
-      const output = await this.adb.text(this.adb.shell(serial, ['am', 'start', '-W', '-n', component], {
-        timeoutMs: 20_000,
-        maxOutputBytes: 64_000,
-      }));
+      const output = await this.adb.text(
+        this.adb.shell(serial, ['am', 'start', '-W', '-n', component], {
+          timeoutMs: 20_000,
+          maxOutputBytes: 64_000,
+        }),
+      );
       return { component, output };
     }
-    const output = await this.adb.text(this.adb.shell(serial, ['monkey', '-p', packageName, '-c', 'android.intent.category.LAUNCHER', '1'], {
-      timeoutMs: 20_000,
-      maxOutputBytes: 64_000,
-    }));
+    const output = await this.adb.text(
+      this.adb.shell(
+        serial,
+        ['monkey', '-p', packageName, '-c', 'android.intent.category.LAUNCHER', '1'],
+        {
+          timeoutMs: 20_000,
+          maxOutputBytes: 64_000,
+        },
+      ),
+    );
     return { component: null, output };
   }
 
   async stop(serial: string, packageName: string): Promise<void> {
-    await this.adb.shell(serial, ['am', 'force-stop', packageName], { timeoutMs: 10_000, maxOutputBytes: 8_192 });
+    await this.adb.shell(serial, ['am', 'force-stop', packageName], {
+      timeoutMs: 10_000,
+      maxOutputBytes: 8_192,
+    });
   }
 
   async clearData(serial: string, packageName: string): Promise<string> {
-    return this.adb.text(this.adb.shell(serial, ['pm', 'clear', packageName], { timeoutMs: 30_000, maxOutputBytes: 16_000 }));
+    return this.adb.text(
+      this.adb.shell(serial, ['pm', 'clear', packageName], {
+        timeoutMs: 30_000,
+        maxOutputBytes: 16_000,
+      }),
+    );
   }
 }
 

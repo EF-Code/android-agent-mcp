@@ -3,7 +3,9 @@ import { AdbClient } from './client.js';
 
 function parseComponent(output: string): ForegroundApp {
   const resumed = /mResumedActivity:.*?\s([A-Za-z0-9_.$]+)\/([A-Za-z0-9_.$]+)/u.exec(output);
-  const focused = /mCurrentFocus=Window\{[^}]*\s([A-Za-z0-9_.$]+)\/([A-Za-z0-9_.$]+)\}/u.exec(output);
+  const focused = /mCurrentFocus=Window\{[^}]*\s([A-Za-z0-9_.$]+)\/([A-Za-z0-9_.$]+)\}/u.exec(
+    output,
+  );
   const match = resumed ?? focused;
   if (match === null) return { packageName: null, activity: null, pid: null };
   const pidMatch = /\bpid=(\d+)\b/u.exec(output);
@@ -18,10 +20,14 @@ export class AdbForeground {
   constructor(private readonly adb: AdbClient) {}
 
   async read(serial: string): Promise<ForegroundApp> {
-    const activity = await this.adb.text(this.adb.shell(serial, ['dumpsys', 'activity', 'activities'], { maxOutputBytes: 256_000 }));
+    const activity = await this.adb.text(
+      this.adb.shell(serial, ['dumpsys', 'activity', 'activities'], { maxOutputBytes: 256_000 }),
+    );
     const parsed = parseComponent(activity);
     if (parsed.packageName !== null) return parsed;
-    const windows = await this.adb.text(this.adb.shell(serial, ['dumpsys', 'window', 'windows'], { maxOutputBytes: 256_000 }));
+    const windows = await this.adb.text(
+      this.adb.shell(serial, ['dumpsys', 'window', 'windows'], { maxOutputBytes: 256_000 }),
+    );
     return parseComponent(windows);
   }
 }

@@ -75,9 +75,13 @@ export class AdbInstaller {
       });
     }
     if (!fileStat.isFile() || fileStat.size <= 0 || fileStat.size > this.maxBytes) {
-      throw new AppError(ErrorCode.ApkInvalid, 'APK is not a regular file within the configured size limit.', {
-        details: { bytes: fileStat.size, maxBytes: this.maxBytes },
-      });
+      throw new AppError(
+        ErrorCode.ApkInvalid,
+        'APK is not a regular file within the configured size limit.',
+        {
+          details: { bytes: fileStat.size, maxBytes: this.maxBytes },
+        },
+      );
     }
 
     let matchedRoot = false;
@@ -95,9 +99,13 @@ export class AdbInstaller {
       }
     }
     if (!matchedRoot) {
-      throw new AppError(ErrorCode.FileNotAllowed, 'APK path is outside every configured allowed APK root.', {
-        details: { requestedPath, allowedRoots: this.allowedRoots },
-      });
+      throw new AppError(
+        ErrorCode.FileNotAllowed,
+        'APK path is outside every configured allowed APK root.',
+        {
+          details: { requestedPath, allowedRoots: this.allowedRoots },
+        },
+      );
     }
 
     return {
@@ -108,16 +116,23 @@ export class AdbInstaller {
     };
   }
 
-  async install(serial: string, apk: ValidatedApk, replace: boolean): Promise<{ output: string; replace: boolean }> {
+  async install(
+    serial: string,
+    apk: ValidatedApk,
+    replace: boolean,
+  ): Promise<{ output: string; replace: boolean }> {
     const args = ['install'];
     if (replace) args.push('-r');
     args.push(apk.realPath);
     try {
-      const output = await this.adb.text(this.adb.device(serial, args, { timeoutMs: 120_000, maxOutputBytes: 64_000 }));
+      const output = await this.adb.text(
+        this.adb.device(serial, args, { timeoutMs: 120_000, maxOutputBytes: 64_000 }),
+      );
       return { output, replace };
     } catch (error) {
       const appError = asAppError(error);
-      const stderr = typeof appError.details.stderr === 'string' ? appError.details.stderr : appError.message;
+      const stderr =
+        typeof appError.details.stderr === 'string' ? appError.details.stderr : appError.message;
       throw new AppError(ErrorCode.ApkInstallFailed, 'APK installation failed.', {
         details: {
           failureCode: normalizeInstallFailure(stderr),

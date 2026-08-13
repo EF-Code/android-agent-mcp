@@ -10,77 +10,91 @@ import type { UiSelector } from '../../src/ui/types.js';
 const enabled = process.env.ANDROID_DEVICE_MCP_PHYSICAL === '1';
 const testPackage = process.env.ANDROID_DEVICE_MCP_TEST_PACKAGE;
 
-test('runs the opt-in harmless Android-device smoke workflow', { skip: !enabled || testPackage === undefined }, async (t) => {
-  const packageName = testPackage!;
-  let selector: UiSelector;
-  try {
-    const rawSelector = process.env.ANDROID_DEVICE_MCP_TEST_SELECTOR;
-    if (rawSelector === undefined) {
-      t.skip('Set ANDROID_DEVICE_MCP_TEST_SELECTOR to a known harmless element selector for the designated test app.');
+test(
+  'runs the opt-in harmless Android-device smoke workflow',
+  { skip: !enabled || testPackage === undefined },
+  async (t) => {
+    const packageName = testPackage!;
+    let selector: UiSelector;
+    try {
+      const rawSelector = process.env.ANDROID_DEVICE_MCP_TEST_SELECTOR;
+      if (rawSelector === undefined) {
+        t.skip(
+          'Set ANDROID_DEVICE_MCP_TEST_SELECTOR to a known harmless element selector for the designated test app.',
+        );
+        return;
+      }
+      selector = JSON.parse(rawSelector) as UiSelector;
+    } catch {
+      t.skip('ANDROID_DEVICE_MCP_TEST_SELECTOR must be valid JSON.');
       return;
     }
-    selector = JSON.parse(rawSelector) as UiSelector;
-  } catch {
-    t.skip('ANDROID_DEVICE_MCP_TEST_SELECTOR must be valid JSON.');
-    return;
-  }
 
-  const config = loadConfig({
-    env: {
-      ...process.env,
-      ANDROID_DEVICE_MCP_ALLOWED_PACKAGES: packageName,
-    },
-  });
-  const service = new AndroidDeviceService(config);
-  let evidence: EvidenceSession | null = null;
-  try {
-    const devices = await service.devices.list();
-    const authorized = devices.filter((device) => device.authorized);
-    if (authorized.length !== 1) {
-      t.skip(`Expected exactly one authorized device; found ${authorized.length}.`);
-      return;
-    }
-    const serial = authorized[0]!.serial;
-    await service.devices.select(serial);
-    const info = await service.deviceInfo();
-    assert.equal(info.serial, serial);
-
-    evidence = await service.beginEvidence('physical-smoke', { testPackage });
-    const initialScreenshot = await service.screenshots.capture(serial);
-    await evidence.saveScreenshot('initial', initialScreenshot.png);
-    const initialUi = await service.captureUi();
-    await evidence.saveUi('initial', initialUi);
-
-    await service.packages.launch(serial, packageName);
-    const foreground = await service.waitForForeground(packageName);
-    assert.equal(foreground.packageName, packageName);
-
-    const launchedUi = await service.captureUi();
-    const matches = findMatches(launchedUi, selector);
-    assert.ok(matches.length > 0, 'The configured harmless selector did not match the test application.');
-    const action = await service.tapSelector(selector, undefined, true, launchedUi);
-    assert.equal(action.before.foreground.packageName, packageName);
-
-    const mirror = await service.scrcpy.start(serial, {
-      maxSize: config.mirror.maxSize,
-      maxFps: config.mirror.maxFps,
-      audio: false,
-      control: false,
-      stayAwake: false,
-      turnScreenOff: false,
-      windowTitle: 'Android Device MCP physical smoke',
+    const config = loadConfig({
+      env: {
+        ...process.env,
+        ANDROID_DEVICE_MCP_ALLOWED_PACKAGES: packageName,
+      },
     });
-    assert.equal(mirror.status.deviceSerial, serial);
-    assert.equal(mirror.status.running, true);
-    await service.scrcpy.stop();
+    const service = new AndroidDeviceService(config);
+    let evidence: EvidenceSession | null = null;
+    try {
+      const devices = await service.devices.list();
+      const authorized = devices.filter((device) => device.authorized);
+      if (authorized.length !== 1) {
+        t.skip(`Expected exactly one authorized device; found ${authorized.length}.`);
+        return;
+      }
+      const serial = authorized[0]!.serial;
+      await service.devices.select(serial);
+      const info = await service.deviceInfo();
+      assert.equal(info.serial, serial);
 
-    const logs = await service.captureLogcat(serial, { packageName, severity: 'W', durationMs: 250 });
-    await evidence.saveLog('logcat', logs.text);
-    const finished = await service.evidence.finish();
-    assert.ok(finished.files.some((file) => file.path === 'summary.md'));
-    evidence = null;
-  } finally {
-    if (evidence !== null && service.evidence.activeSession !== null) await service.evidence.finish();
-    await service.close();
-  }
-});
+      evidence = await service.beginEvidence('physical-smoke', { testPackage });
+      const initialScreenshot = await service.screenshots.capture(serial);
+      await evidence.saveScreenshot('initial', initialScreenshot.png);
+      const initialUi = await service.captureUi();
+      await evidence.saveUi('initial', initialUi);
+
+      await service.packages.launch(serial, packageName);
+      const foreground = await service.waitForForeground(packageName);
+      assert.equal(foreground.packageName, packageName);
+
+      const launchedUi = await service.captureUi();
+      const matches = findMatches(launchedUi, selector);
+      assert.ok(
+        matches.length > 0,
+        'The configured harmless selector did not match the test application.',
+      );
+      const action = await service.tapSelector(selector, undefined, true, launchedUi);
+      assert.equal(action.before.foreground.packageName, packageName);
+
+      const mirror = await service.scrcpy.start(serial, {
+        maxSize: config.mirror.maxSize,
+        maxFps: config.mirror.maxFps,
+        audio: false,
+        control: false,
+        stayAwake: false,
+        turnScreenOff: false,
+        windowTitle: 'Android Device MCP physical smoke',
+      });
+      assert.equal(mirror.status.deviceSerial, serial);
+      assert.equal(mirror.status.running, true);
+      await service.scrcpy.stop();
+
+      const logs = await service.captureLogcat(serial, {
+        packageName,
+        severity: 'W',
+        durationMs: 250,
+      });
+      await evidence.saveLog('logcat', logs.text);
+      const finished = await service.evidence.finish();
+      assert.ok(finished.files.some((file) => file.path === 'summary.md'));
+      evidence = null;
+    } finally {
+      if (evidence !== null && service.evidence.activeSession !== null)
+        await service.evidence.finish();
+      await service.close();
+    }
+  },
+);

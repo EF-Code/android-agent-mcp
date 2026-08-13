@@ -39,5 +39,11 @@ test('normalizes bounded screenshot output overflow', async () => {
     },
   });
   const screenshots = new AdbScreenshots(adb, 2_048);
-  await assert.rejects(() => screenshots.capture('serial-1'), (error: unknown) => error instanceof AppError && error.code === ErrorCode.ScreenshotTooLarge && error.details.observedBytes === 2_049);
+  await assert.rejects(
+    () => screenshots.capture('serial-1'),
+    (error: unknown) =>
+      error instanceof AppError &&
+      error.code === ErrorCode.ScreenshotTooLarge &&
+      error.details.observedBytes === 2_049,
+  );
 });

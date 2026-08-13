@@ -22,7 +22,12 @@ import { parseUiAutomatorXml } from './ui/parse.js';
 import { SnapshotStore } from './ui/snapshots.js';
 import { findMatches, resolveUniqueMatch } from './ui/selectors.js';
 import type { UiSelector, UiSnapshot } from './ui/types.js';
-import { validateCoordinate, validateDuration, validateLabel, validatePackageName } from './validation/common.js';
+import {
+  validateCoordinate,
+  validateDuration,
+  validateLabel,
+  validatePackageName,
+} from './validation/common.js';
 import { ScrcpyProcessManager } from './scrcpy/process-manager.js';
 
 const STARTUP_WAIT_MS = 200;
@@ -53,9 +58,15 @@ export class AndroidDeviceService {
   private readonly activeLogControllers = new Set<AbortController>();
 
   constructor(readonly config: ServerConfig) {
-    this.adb = new AdbClient({ adbPath: config.adbPath, defaultTimeoutMs: config.defaultTimeoutMs, maxOutputBytes: config.maxCommandOutputBytes });
+    this.adb = new AdbClient({
+      adbPath: config.adbPath,
+      defaultTimeoutMs: config.defaultTimeoutMs,
+      maxOutputBytes: config.maxCommandOutputBytes,
+    });
     this.policy = new Policy(config);
-    this.devices = new DeviceManager(this.adb, config.autoSelectSingleDevice, (serial) => this.handleDisconnect(serial));
+    this.devices = new DeviceManager(this.adb, config.autoSelectSingleDevice, (serial) =>
+      this.handleDisconnect(serial),
+    );
     this.foreground = new AdbForeground(this.adb);
     this.input = new AdbInput(this.adb);
     this.installer = new AdbInstaller(this.adb, config.allowedApkRoots, config.maxApkBytes);
@@ -67,7 +78,12 @@ export class AndroidDeviceService {
     this.uiAutomator = new AdbUiAutomator(this.adb);
     this.snapshots = new SnapshotStore(config.uiSnapshotMaxAgeMs);
     this.scrcpy = new ScrcpyProcessManager(config.scrcpyPath, config.mirror.leaveRunningOnExit);
-    this.evidence = new EvidenceManager(config.evidenceRoot, config.maxEvidenceBytes, config.maxEvidenceFiles, config.evidenceRetentionMaxAgeMs);
+    this.evidence = new EvidenceManager(
+      config.evidenceRoot,
+      config.maxEvidenceBytes,
+      config.maxEvidenceFiles,
+      config.evidenceRetentionMaxAgeMs,
+    );
   }
 
   async close(): Promise<void> {
@@ -88,10 +104,17 @@ export class AndroidDeviceService {
 
   async screenObservation(serial?: string): Promise<ScreenObservation> {
     const selectedSerial = serial ?? (await this.selectedSerial());
-    const [display, rotation] = await Promise.all([this.properties.display(selectedSerial), this.properties.rotation(selectedSerial)]);
+    const [display, rotation] = await Promise.all([
+      this.properties.display(selectedSerial),
+      this.properties.rotation(selectedSerial),
+    ]);
     const foreground = await this.foreground.read(selectedSerial);
     return {
-      display: { width: display.resolution?.width ?? 0, height: display.resolution?.height ?? 0, rotation },
+      display: {
+        width: display.resolution?.width ?? 0,
+        height: display.resolution?.height ?? 0,
+        rotation,
+      },
       foreground,
       observedAt: new Date().toISOString(),
     };
@@ -124,15 +147,19 @@ export class AndroidDeviceService {
     const observation = await this.screenObservation(serial);
     const xml = await this.uiAutomator.dump(serial);
     const snapshot = parseUiAutomatorXml(xml, {
-        snapshotId: randomUUID(),
-        deviceSerial: session.serial,
-        deviceSessionId: session.sessionId,
-        capturedAt: new Date().toISOString(),
-        display: observation.display,
-        foreground: observation.foreground,
-      });
-    const shouldRedact = observation.foreground.packageName === null || !this.policy.isPackageAllowed(observation.foreground.packageName) || this.policy.isSensitivePackage(observation.foreground.packageName);
-    if (shouldRedact) this.evidence.pause('foreground package is sensitive, unavailable, or outside the allowlist');
+      snapshotId: randomUUID(),
+      deviceSerial: session.serial,
+      deviceSessionId: session.sessionId,
+      capturedAt: new Date().toISOString(),
+      display: observation.display,
+      foreground: observation.foreground,
+    });
+    const shouldRedact =
+      observation.foreground.packageName === null ||
+      !this.policy.isPackageAllowed(observation.foreground.packageName) ||
+      this.policy.isSensitivePackage(observation.foreground.packageName);
+    if (shouldRedact)
+      this.evidence.pause('foreground package is sensitive, unavailable, or outside the allowlist');
     const safeSnapshot: UiSnapshot = shouldRedact
       ? {
           ...snapshot,
@@ -145,7 +172,8 @@ export class AndroidDeviceService {
             ...snapshot.warnings,
             {
               code: 'SENSITIVE_FOREGROUND_REDACTED',
-              message: 'UI text and content descriptions were redacted because foreground package authorization was unavailable or restrictive.',
+              message:
+                'UI text and content descriptions were redacted because foreground package authorization was unavailable or restrictive.',
             },
           ],
         }
@@ -165,8 +193,14 @@ export class AndroidDeviceService {
 
   async requireCaptureForeground(operation: string): Promise<ForegroundApp> {
     const foreground = await this.currentForeground();
-    if (foreground.packageName === null || !this.policy.isPackageAllowed(foreground.packageName) || this.policy.isSensitivePackage(foreground.packageName)) {
-      this.evidence.pause(`capture blocked for ${foreground.packageName ?? 'unknown'} foreground package`);
+    if (
+      foreground.packageName === null ||
+      !this.policy.isPackageAllowed(foreground.packageName) ||
+      this.policy.isSensitivePackage(foreground.packageName)
+    ) {
+      this.evidence.pause(
+        `capture blocked for ${foreground.packageName ?? 'unknown'} foreground package`,
+      );
     }
     this.policy.assertObservationAllowed(foreground, operation);
     return foreground;
@@ -186,7 +220,10 @@ export class AndroidDeviceService {
     return (await this.screenshots.capture(await this.selectedSerial())).sha256;
   }
 
-  async captureLogcat(serial: string, options: Omit<LogCaptureOptions, 'signal'> = {}): Promise<Awaited<ReturnType<AdbLogcat['capture']>>> {
+  async captureLogcat(
+    serial: string,
+    options: Omit<LogCaptureOptions, 'signal'> = {},
+  ): Promise<Awaited<ReturnType<AdbLogcat['capture']>>> {
     const controller = new AbortController();
     this.activeLogControllers.add(controller);
     try {
@@ -203,15 +240,23 @@ export class AndroidDeviceService {
   async verifyForeground(packageName: string): Promise<ForegroundApp> {
     const foreground = await this.currentForeground();
     if (foreground.packageName !== packageName) {
-      throw new AppError(ErrorCode.CommandFailed, 'Application did not become the foreground package.', {
-        retryable: true,
-        details: { expectedPackage: packageName, foreground },
-      });
+      throw new AppError(
+        ErrorCode.CommandFailed,
+        'Application did not become the foreground package.',
+        {
+          retryable: true,
+          details: { expectedPackage: packageName, foreground },
+        },
+      );
     }
     return foreground;
   }
 
-  async waitForForeground(packageName: string, timeoutMs = 5_000, pollMs = 200): Promise<ForegroundApp> {
+  async waitForForeground(
+    packageName: string,
+    timeoutMs = 5_000,
+    pollMs = 200,
+  ): Promise<ForegroundApp> {
     validatePackageName(packageName);
     const started = Date.now();
     let foreground = await this.currentForeground();
@@ -220,32 +265,68 @@ export class AndroidDeviceService {
       await new Promise((resolve) => setTimeout(resolve, pollMs));
       foreground = await this.currentForeground();
     }
-    throw new AppError(ErrorCode.CommandFailed, 'Application did not become the foreground package within the verification window.', {
-      retryable: true,
-      details: { expectedPackage: packageName, foreground, timeoutMs },
-    });
+    throw new AppError(
+      ErrorCode.CommandFailed,
+      'Application did not become the foreground package within the verification window.',
+      {
+        retryable: true,
+        details: { expectedPackage: packageName, foreground, timeoutMs },
+      },
+    );
   }
 
-  async tapSelector(selector: UiSelector, matchIndex?: number, verifyChange = true, sourceSnapshot?: UiSnapshot, verifyPixels = false): Promise<{ before: UiSnapshot; after: UiSnapshot | null; nodeId: string; beforePixelSha256: string | null; afterPixelSha256: string | null }> {
+  async tapSelector(
+    selector: UiSelector,
+    matchIndex?: number,
+    verifyChange = true,
+    sourceSnapshot?: UiSnapshot,
+    verifyPixels = false,
+  ): Promise<{
+    before: UiSnapshot;
+    after: UiSnapshot | null;
+    nodeId: string;
+    beforePixelSha256: string | null;
+    afterPixelSha256: string | null;
+  }> {
     const serial = await this.selectedSerial();
     const foreground = await this.requireAllowedForeground('semantic tap');
-    const before = sourceSnapshot === undefined ? await this.captureUi() : await this.requireFreshSnapshot(sourceSnapshot.snapshotId);
+    const before =
+      sourceSnapshot === undefined
+        ? await this.captureUi()
+        : await this.requireFreshSnapshot(sourceSnapshot.snapshotId);
     const beforePixelSha256 = verifyPixels ? await this.pixelDigest() : null;
     this.policy.assertForegroundAllowed(before.foreground, 'semantic tap');
-    if (before.foreground.packageName !== foreground.packageName || before.foreground.activity !== foreground.activity) {
-      throw new AppError(ErrorCode.StaleUiSnapshot, 'Foreground changed while preparing the semantic tap.', {
-        retryable: true,
-        details: { before: foreground, snapshot: before.foreground },
-      });
+    if (
+      before.foreground.packageName !== foreground.packageName ||
+      before.foreground.activity !== foreground.activity
+    ) {
+      throw new AppError(
+        ErrorCode.StaleUiSnapshot,
+        'Foreground changed while preparing the semantic tap.',
+        {
+          retryable: true,
+          details: { before: foreground, snapshot: before.foreground },
+        },
+      );
     }
     const match = resolveUniqueMatch(before, selector, matchIndex);
     if (!match.node.flags.enabled || match.node.bounds === null || match.node.center === null) {
-      throw new AppError(ErrorCode.UiElementNotFound, 'The selected UI element is not visible and enabled with valid bounds.');
+      throw new AppError(
+        ErrorCode.UiElementNotFound,
+        'The selected UI element is not visible and enabled with valid bounds.',
+      );
     }
     if (match.node.packageName === null || match.node.packageName !== foreground.packageName) {
-      throw new AppError(ErrorCode.PackageNotAllowed, 'The semantic target package is missing or differs from the authorized foreground package.', {
-        details: { targetPackage: match.node.packageName, foregroundPackage: foreground.packageName },
-      });
+      throw new AppError(
+        ErrorCode.PackageNotAllowed,
+        'The semantic target package is missing or differs from the authorized foreground package.',
+        {
+          details: {
+            targetPackage: match.node.packageName,
+            foregroundPackage: foreground.packageName,
+          },
+        },
+      );
     }
     this.policy.assertPackageAllowed(match.node.packageName);
     await this.input.tap(serial, match.node.center.x, match.node.center.y);
@@ -255,16 +336,28 @@ export class AndroidDeviceService {
     return { before, after, nodeId: match.node.nodeId, beforePixelSha256, afterPixelSha256 };
   }
 
-  async tapCoordinates(x: number, y: number, verifyChange: boolean, verifyPixels = false): Promise<ActionObservation> {
+  async tapCoordinates(
+    x: number,
+    y: number,
+    verifyChange: boolean,
+    verifyPixels = false,
+  ): Promise<ActionObservation> {
     const serial = await this.selectedSerial();
     await this.requireAllowedForeground('screen tap');
     const observation = await this.screenObservation(serial);
     validateCoordinate(x, 'x');
     validateCoordinate(y, 'y');
-    if (observation.display.width > 0 && (x >= observation.display.width || y >= observation.display.height)) {
-      throw new AppError(ErrorCode.InvalidCoordinates, 'Coordinates are outside the native device display bounds.', {
-        details: { x, y, display: observation.display },
-      });
+    if (
+      observation.display.width > 0 &&
+      (x >= observation.display.width || y >= observation.display.height)
+    ) {
+      throw new AppError(
+        ErrorCode.InvalidCoordinates,
+        'Coordinates are outside the native device display bounds.',
+        {
+          details: { x, y, display: observation.display },
+        },
+      );
     }
     const before = verifyChange ? await this.captureUi() : null;
     const beforePixelSha256 = verifyPixels ? await this.pixelDigest() : null;
@@ -275,7 +368,16 @@ export class AndroidDeviceService {
     return { before, after, beforePixelSha256, afterPixelSha256 };
   }
 
-  async swipe(options: { startX?: number; startY?: number; endX?: number; endY?: number; direction?: string; durationMs?: number; verifyChange: boolean; verifyPixels?: boolean }): Promise<ActionObservation> {
+  async swipe(options: {
+    startX?: number;
+    startY?: number;
+    endX?: number;
+    endY?: number;
+    direction?: string;
+    durationMs?: number;
+    verifyChange: boolean;
+    verifyPixels?: boolean;
+  }): Promise<ActionObservation> {
     const serial = await this.selectedSerial();
     await this.requireAllowedForeground('screen swipe');
     const observation = await this.screenObservation(serial);
@@ -286,25 +388,66 @@ export class AndroidDeviceService {
     let endX = options.endX;
     let endY = options.endY;
     if (options.direction !== undefined) {
-      if (width <= 0 || height <= 0) throw new AppError(ErrorCode.InvalidInput, 'Cannot resolve a direction without display dimensions.');
+      if (width <= 0 || height <= 0)
+        throw new AppError(
+          ErrorCode.InvalidInput,
+          'Cannot resolve a direction without display dimensions.',
+        );
       const marginX = Math.floor(width * 0.5);
       const marginY = Math.floor(height * 0.5);
       ({ startX, startY, endX, endY } = {
-        up: { startX: marginX, startY: Math.floor(height * 0.75), endX: marginX, endY: Math.floor(height * 0.25) },
-        down: { startX: marginX, startY: Math.floor(height * 0.25), endX: marginX, endY: Math.floor(height * 0.75) },
-        left: { startX: Math.floor(width * 0.75), startY: marginY, endX: Math.floor(width * 0.25), endY: marginY },
-        right: { startX: Math.floor(width * 0.25), startY: marginY, endX: Math.floor(width * 0.75), endY: marginY },
+        up: {
+          startX: marginX,
+          startY: Math.floor(height * 0.75),
+          endX: marginX,
+          endY: Math.floor(height * 0.25),
+        },
+        down: {
+          startX: marginX,
+          startY: Math.floor(height * 0.25),
+          endX: marginX,
+          endY: Math.floor(height * 0.75),
+        },
+        left: {
+          startX: Math.floor(width * 0.75),
+          startY: marginY,
+          endX: Math.floor(width * 0.25),
+          endY: marginY,
+        },
+        right: {
+          startX: Math.floor(width * 0.25),
+          startY: marginY,
+          endX: Math.floor(width * 0.75),
+          endY: marginY,
+        },
       }[options.direction as 'up' | 'down' | 'left' | 'right']);
     }
     if ([startX, startY, endX, endY].some((value) => value === undefined)) {
-      throw new AppError(ErrorCode.InvalidInput, 'Swipe requires either direction or complete start/end coordinates.');
+      throw new AppError(
+        ErrorCode.InvalidInput,
+        'Swipe requires either direction or complete start/end coordinates.',
+      );
     }
-    if (width > 0 && height > 0 && (startX! >= width || endX! >= width || startY! >= height || endY! >= height)) {
-      throw new AppError(ErrorCode.InvalidCoordinates, 'Swipe coordinates are outside display bounds.');
+    if (
+      width > 0 &&
+      height > 0 &&
+      (startX! >= width || endX! >= width || startY! >= height || endY! >= height)
+    ) {
+      throw new AppError(
+        ErrorCode.InvalidCoordinates,
+        'Swipe coordinates are outside display bounds.',
+      );
     }
     const before = options.verifyChange ? await this.captureUi() : null;
     const beforePixelSha256 = options.verifyPixels === true ? await this.pixelDigest() : null;
-    await this.input.swipe(serial, startX!, startY!, endX!, endY!, validateDuration(options.durationMs ?? 300, 'durationMs', 30_000));
+    await this.input.swipe(
+      serial,
+      startX!,
+      startY!,
+      endX!,
+      endY!,
+      validateDuration(options.durationMs ?? 300, 'durationMs', 30_000),
+    );
     await this.stabilize();
     const after = options.verifyChange ? await this.captureUi() : null;
     const afterPixelSha256 = options.verifyPixels === true ? await this.pixelDigest() : null;
@@ -315,25 +458,55 @@ export class AndroidDeviceService {
     const serial = await this.selectedSerial();
     await this.requireAllowedForeground('screen long press');
     const observation = await this.screenObservation(serial);
-    if (observation.display.width > 0 && (x >= observation.display.width || y >= observation.display.height)) {
-      throw new AppError(ErrorCode.InvalidCoordinates, 'Long-press coordinates are outside the native device display bounds.', {
-        details: { x, y, display: observation.display },
-      });
+    if (
+      observation.display.width > 0 &&
+      (x >= observation.display.width || y >= observation.display.height)
+    ) {
+      throw new AppError(
+        ErrorCode.InvalidCoordinates,
+        'Long-press coordinates are outside the native device display bounds.',
+        {
+          details: { x, y, display: observation.display },
+        },
+      );
     }
     await this.input.longPress(serial, x, y, validateDuration(durationMs, 'durationMs', 30_000));
     await this.stabilize();
   }
 
-  async waitForUi(options: { selector?: UiSelector; packageName?: string; activity?: string; disappearance?: boolean; screenChange?: boolean; timeoutMs: number; pollMs: number }): Promise<{ matched: boolean; elapsedMs: number; snapshot: UiSnapshot | null; foreground: ForegroundApp }> {
+  async waitForUi(options: {
+    selector?: UiSelector;
+    packageName?: string;
+    activity?: string;
+    disappearance?: boolean;
+    screenChange?: boolean;
+    timeoutMs: number;
+    pollMs: number;
+  }): Promise<{
+    matched: boolean;
+    elapsedMs: number;
+    snapshot: UiSnapshot | null;
+    foreground: ForegroundApp;
+  }> {
     const started = Date.now();
     let previousFingerprint: string | null = null;
     while (Date.now() - started <= options.timeoutMs) {
       const foreground = await this.currentForeground();
-      const snapshot = options.selector === undefined && options.screenChange !== true ? null : await this.captureUi();
-      const selectorMatches = options.selector === undefined || (snapshot !== null && findMatches(snapshot, options.selector).length > 0);
-      const packageMatches = options.packageName === undefined || foreground.packageName === options.packageName;
-      const activityMatches = options.activity === undefined || foreground.activity === options.activity;
-      const fingerprint = snapshot === null ? null : JSON.stringify(snapshot.nodes.map((node) => [node.nodeId, node.text, node.bounds]));
+      const snapshot =
+        options.selector === undefined && options.screenChange !== true
+          ? null
+          : await this.captureUi();
+      const selectorMatches =
+        options.selector === undefined ||
+        (snapshot !== null && findMatches(snapshot, options.selector).length > 0);
+      const packageMatches =
+        options.packageName === undefined || foreground.packageName === options.packageName;
+      const activityMatches =
+        options.activity === undefined || foreground.activity === options.activity;
+      const fingerprint =
+        snapshot === null
+          ? null
+          : JSON.stringify(snapshot.nodes.map((node) => [node.nodeId, node.text, node.bounds]));
       const changed = previousFingerprint !== null && fingerprint !== previousFingerprint;
       const screenMatches = options.screenChange !== true || changed;
       const present = selectorMatches && packageMatches && activityMatches && screenMatches;
@@ -342,10 +515,18 @@ export class AndroidDeviceService {
       previousFingerprint = fingerprint;
       await new Promise((resolve) => setTimeout(resolve, options.pollMs));
     }
-    return { matched: false, elapsedMs: Date.now() - started, snapshot: this.snapshots.get() ?? null, foreground: await this.currentForeground() };
+    return {
+      matched: false,
+      elapsedMs: Date.now() - started,
+      snapshot: this.snapshots.get() ?? null,
+      foreground: await this.currentForeground(),
+    };
   }
 
-  async beginEvidence(label: string | undefined, metadata: Record<string, unknown> | undefined): Promise<EvidenceSession> {
+  async beginEvidence(
+    label: string | undefined,
+    metadata: Record<string, unknown> | undefined,
+  ): Promise<EvidenceSession> {
     const device = await this.deviceInfo();
     const manifest = {
       serverVersion: '0.1.0',

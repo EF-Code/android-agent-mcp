@@ -82,7 +82,24 @@ export const swipeSchema = {
 };
 
 export const keyPressSchema = {
-  key: z.enum(['back', 'home', 'enter', 'tab', 'escape', 'delete', 'arrow_up', 'arrow_down', 'arrow_left', 'arrow_right', 'menu', 'app_switch', 'volume_up', 'volume_down', 'wake', 'power']),
+  key: z.enum([
+    'back',
+    'home',
+    'enter',
+    'tab',
+    'escape',
+    'delete',
+    'arrow_up',
+    'arrow_down',
+    'arrow_left',
+    'arrow_right',
+    'menu',
+    'app_switch',
+    'volume_up',
+    'volume_down',
+    'wake',
+    'power',
+  ]),
   allow_power: z.boolean().optional(),
   verify_change: z.boolean().optional(),
 };
