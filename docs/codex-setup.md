@@ -43,4 +43,4 @@ The server independently enforces approval-required operations through the host-
 
 ## Current official reference
 
-OpenAI’s official MCP documentation describes local STDIO servers, shared Codex MCP configuration, `codex mcp add`, `codex mcp list`, and server initialization instructions. Consult it if the installed Codex CLI syntax changes.
+OpenAI’s [official MCP documentation](https://learn.chatgpt.com/docs/extend/mcp) describes local STDIO servers, shared Codex MCP configuration, `codex mcp add`, `codex mcp list`, and server initialization instructions. Consult it if the installed Codex CLI syntax changes.

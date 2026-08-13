@@ -76,7 +76,7 @@ codex mcp add android-device -- node "$PROJECT_DIR/dist/index.js"
 codex mcp list
 ```
 
-The current official OpenAI MCP guidance documents local stdio servers and the same `codex mcp add <name> -- <command>` shape. Restart Codex after registration so the server and its tools are loaded. A project-scoped `.codex/config.toml` can also be used for trusted projects.
+The [official OpenAI MCP guidance](https://learn.chatgpt.com/docs/extend/mcp) documents local stdio servers and the same `codex mcp add <name> -- <command>` shape. Restart Codex after registration so the server and its tools are loaded. A project-scoped `.codex/config.toml` can also be used for trusted projects.
 
 ## Configuration
 
