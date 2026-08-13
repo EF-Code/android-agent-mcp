@@ -7,8 +7,8 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
 import type { UiSelector } from '../../src/ui/types.js';
 
-const enabled = process.env.ANDROID_DEVICE_MCP_PHYSICAL === '1';
-const testPackage = process.env.ANDROID_DEVICE_MCP_TEST_PACKAGE;
+const enabled = process.env.ANDROID_MCP_PHYSICAL === '1';
+const testPackage = process.env.ANDROID_MCP_TEST_PACKAGE;
 const repositoryRoot = process.cwd();
 const serverEntrypoint = join(repositoryRoot, 'dist-test', 'src', 'index.js');
 
@@ -29,8 +29,8 @@ function childEnvironment(packageName: string): Record<string, string> {
     const value = process.env[key];
     if (value !== undefined) environment[key] = value;
   }
-  environment.ANDROID_DEVICE_MCP_ALLOWED_PACKAGES = '*';
-  environment.ANDROID_DEVICE_MCP_MIRROR_AUTO_START = 'true';
+  environment.ANDROID_MCP_ALLOWED_PACKAGES = '*';
+  environment.ANDROID_MCP_MIRROR_AUTO_START = 'true';
   return environment;
 }
 
@@ -50,16 +50,16 @@ test(
     const packageName = testPackage!;
     let selector: UiSelector;
     try {
-      const rawSelector = process.env.ANDROID_DEVICE_MCP_TEST_SELECTOR;
+      const rawSelector = process.env.ANDROID_MCP_TEST_SELECTOR;
       if (rawSelector === undefined) {
         t.skip(
-          'Set ANDROID_DEVICE_MCP_TEST_SELECTOR to a repeatable harmless selector in the designated app.',
+          'Set ANDROID_MCP_TEST_SELECTOR to a repeatable harmless selector in the designated app.',
         );
         return;
       }
       selector = JSON.parse(rawSelector) as UiSelector;
     } catch {
-      t.skip('ANDROID_DEVICE_MCP_TEST_SELECTOR must be valid JSON.');
+      t.skip('ANDROID_MCP_TEST_SELECTOR must be valid JSON.');
       return;
     }
 

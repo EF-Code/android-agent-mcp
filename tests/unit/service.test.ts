@@ -10,9 +10,9 @@ test('keeps ADB discovery usable when visible scrcpy auto-start fails', async ()
   const service = new AndroidDeviceService(
     loadConfig({
       env: {
-        ANDROID_DEVICE_MCP_ADB_PATH: join(process.cwd(), 'tests', 'fixtures', 'fake-adb.mjs'),
-        ANDROID_DEVICE_MCP_SCRCPY_PATH: '/definitely/missing/scrcpy',
-        ANDROID_DEVICE_MCP_MIRROR_AUTO_START: 'true',
+        ANDROID_MCP_ADB_PATH: join(process.cwd(), 'tests', 'fixtures', 'fake-adb.mjs'),
+        ANDROID_MCP_SCRCPY_PATH: '/definitely/missing/scrcpy',
+        ANDROID_MCP_MIRROR_AUTO_START: 'true',
       },
     }),
   );
@@ -32,9 +32,9 @@ test('attempts visible auto-start only once per selected-device session', async 
   const service = new AndroidDeviceService(
     loadConfig({
       env: {
-        ANDROID_DEVICE_MCP_ADB_PATH: join(process.cwd(), 'tests', 'fixtures', 'fake-adb.mjs'),
-        ANDROID_DEVICE_MCP_SCRCPY_PATH: '/definitely/missing/scrcpy',
-        ANDROID_DEVICE_MCP_MIRROR_AUTO_START: 'true',
+        ANDROID_MCP_ADB_PATH: join(process.cwd(), 'tests', 'fixtures', 'fake-adb.mjs'),
+        ANDROID_MCP_SCRCPY_PATH: '/definitely/missing/scrcpy',
+        ANDROID_MCP_MIRROR_AUTO_START: 'true',
       },
     }),
   );
