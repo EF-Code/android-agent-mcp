@@ -49,8 +49,10 @@ export interface UiSelector {
   nodeId?: string;
   text?: string;
   textMode?: SelectorMatchMode;
+  textCaseSensitive?: boolean;
   contentDescription?: string;
   contentDescriptionMode?: SelectorMatchMode;
+  contentDescriptionCaseSensitive?: boolean;
   resourceId?: string;
   className?: string;
   packageName?: string;
