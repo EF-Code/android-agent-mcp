@@ -143,7 +143,7 @@ export class EvidenceSession {
       '',
       '## Files',
       '',
-      ...this.files.map((file) => `- `${file.path}` — ${file.bytes} bytes — SHA-256 `${file.sha256}``),
+      ...this.files.map((file) => `- \`${file.path}\` — ${file.bytes} bytes — SHA-256 \`${file.sha256}\``),
       '',
       '## Warnings',
       '',
