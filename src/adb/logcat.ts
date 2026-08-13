@@ -99,7 +99,7 @@ export class AdbLogcat {
     if (!/^[VDIWEF]$/u.test(severity)) throw new AppError(ErrorCode.InvalidInput, 'Unsupported log severity.');
     const tags = validateTags(options.tags ?? []);
     const pid = options.pid ?? (options.packageName === undefined ? undefined : await this.pidForPackage(serial, options.packageName));
-    if (pid !== undefined && (!Number.isSafeInteger(pid) || pid <= 0)) throw new AppError(ErrorCode.InvalidInput, 'PID is invalid.');
+    if (pid !== undefined && pid !== null && (!Number.isSafeInteger(pid) || pid <= 0)) throw new AppError(ErrorCode.InvalidInput, 'PID is invalid.');
     if (options.packageName !== undefined && pid === null) {
       return { lines: [], text: '', truncated: false, durationMs: 0 };
     }
