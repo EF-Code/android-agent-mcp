@@ -130,6 +130,8 @@ Environment overrides use the `ANDROID_DEVICE_MCP_` prefix. Lists are comma-sepa
 8. Use `mirror_start` only when the user wants a visible scrcpy window; continue to act through ADB tools.
 9. Use `evidence_begin`, explicitly capture the desired artifacts, then `evidence_finish`.
 
+If the selected phone disconnects or becomes unauthorized, the server invalidates retained UI state and requires an explicit `device_select` again after reconnecting, even when the serial is unchanged.
+
 No generic shell tool is exposed.
 
 ## Tests

@@ -20,6 +20,10 @@ Fix the host’s udev rules or user group membership according to the Linux dist
 
 Call `device_list`, then `device_select` with the exact serial. Every later command remains bound to that serial.
 
+## A reconnected phone is rejected
+
+After a disconnect or authorization transition, call `device_list` and then `device_select` again, even if the phone reports the same serial. The server intentionally invalidates the previous device session and retained UI snapshots.
+
 ## Screenshot or UI dump fails
 
 Check that the device is authorized and unlocked. UIAutomator may be empty or incomplete for WebViews, games, video, Compose accessibility gaps, and custom canvases. Use coordinate fallback only after inspecting the native display dimensions and rotation.

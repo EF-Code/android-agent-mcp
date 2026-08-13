@@ -9,6 +9,8 @@
 
 Every action that can act on a phone is bound to the selected serial. Reconnection invalidates stale UI state and does not silently move the session to another device.
 
+After a disconnect or authorization transition, the same serial must be selected again before control resumes; reconnecting alone never reactivates the old session.
+
 Semantic node IDs are valid only for the snapshot that produced them. A fresh post-action snapshot is the evidence that a tap or other action changed the device; a successful ADB exit code alone is not considered success.
 
 Semantic and coordinate actions return hierarchy and foreground/activity change signals separately. Pass `verify_pixels: true` when an additional bounded before/after screenshot SHA-256 comparison is needed; a pixel digest is an observation signal, not proof of business success.
