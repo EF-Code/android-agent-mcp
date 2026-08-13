@@ -46,7 +46,7 @@ test('creates sanitized evidence manifest and summary', async () => {
   assert.ok(!manifest.includes('secret-value'));
   assert.ok(summary.files.length >= 2);
   const summaryText = await readFile(summary.summaryPath, 'utf8');
-  assert.ok(summaryText.includes('# Android MCP Evidence'));
+  assert.ok(summaryText.includes('# Android Agent MCP Evidence'));
   assert.ok(summaryText.includes('including this summary'));
   assert.ok(summaryText.includes('self-referential digest'));
 });

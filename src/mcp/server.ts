@@ -452,7 +452,7 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
                 control: args.control ?? true,
                 stayAwake: args.stay_awake ?? false,
                 turnScreenOff: args.turn_screen_off ?? false,
-                windowTitle: args.window_title ?? 'Android MCP',
+                windowTitle: args.window_title ?? 'Android Agent MCP',
               })
             ).status,
             { deviceSerial: serial },

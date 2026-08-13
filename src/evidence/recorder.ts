@@ -190,7 +190,7 @@ export class EvidenceSession {
       // No tool actions were recorded.
     }
     const lines = [
-      `# Android MCP Evidence ${this.evidenceId}`,
+      `# Android Agent MCP Evidence ${this.evidenceId}`,
       '',
       `- Started: ${this.startedAt}`,
       `- Finished: ${this.finishedAt}`,
