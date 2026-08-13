@@ -166,18 +166,29 @@ export class AndroidDeviceService {
     const serial = session.serial;
     const observation = await this.screenObservation(serial);
     const xml = await this.uiAutomator.dump(serial);
+    const finalObservation = await this.screenObservation(serial);
+    const foregroundChanged = !sameForeground(observation.foreground, finalObservation.foreground);
     const snapshot = parseUiAutomatorXml(xml, {
       snapshotId: randomUUID(),
       deviceSerial: session.serial,
       deviceSessionId: session.sessionId,
       capturedAt: new Date().toISOString(),
-      display: observation.display,
-      foreground: observation.foreground,
+      display: finalObservation.display,
+      foreground: finalObservation.foreground,
     });
+    if (foregroundChanged) {
+      snapshot.warnings.push({
+        code: 'FOREGROUND_CHANGED_DURING_CAPTURE',
+        message: 'The foreground application changed while the UI hierarchy was being captured.',
+        details: {
+          before: observation.foreground,
+          after: finalObservation.foreground,
+        },
+      });
+    }
     const shouldRedact =
-      observation.foreground.packageName === null ||
-      !this.policy.isPackageAllowed(observation.foreground.packageName) ||
-      this.policy.isSensitivePackage(observation.foreground.packageName);
+      !this.policy.canRecordPackage(observation.foreground.packageName) ||
+      !this.policy.canRecordPackage(finalObservation.foreground.packageName);
     if (shouldRedact)
       this.evidence.pause('foreground package is sensitive, unavailable, or outside the allowlist');
     const safeSnapshot: UiSnapshot = shouldRedact
@@ -548,6 +559,10 @@ export class AndroidDeviceService {
       device,
       ...(metadata === undefined ? {} : { metadata }),
     };
-    return this.evidence.begin(manifest, label);
+    const session = await this.evidence.begin(manifest, label);
+    if (!this.policy.canRecordPackage(device.foreground.packageName)) {
+      session.pause('evidence began while the foreground package was unavailable or restrictive');
+    }
+    return session;
   }
 }

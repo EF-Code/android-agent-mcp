@@ -44,9 +44,10 @@ test('creates sanitized evidence manifest and summary', async () => {
   assert.ok(manifest.includes('…1234'));
   assert.ok(!manifest.includes('secret-value'));
   assert.ok(summary.files.length >= 2);
-  assert.ok(
-    (await readFile(summary.summaryPath, 'utf8')).includes('# Android Device MCP Evidence'),
-  );
+  const summaryText = await readFile(summary.summaryPath, 'utf8');
+  assert.ok(summaryText.includes('# Android Device MCP Evidence'));
+  assert.ok(summaryText.includes('including this summary'));
+  assert.ok(summaryText.includes('self-referential digest'));
 });
 
 test('prevents a second active evidence session', async () => {

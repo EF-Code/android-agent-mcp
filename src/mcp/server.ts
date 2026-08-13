@@ -350,6 +350,7 @@ function registerReadOnlyTools(server: McpServer, service: AndroidDeviceService)
             : { includeCrashBuffer: args.include_crash_buffer }),
         };
         const capture = await service.captureLogcat(serial, options);
+        await service.requireAllowedForeground('log capture result');
         const evidence = service.evidence.activeSession;
         if (evidence !== null && !evidence.paused)
           await evidence.saveLog(`logcat-${Date.now()}`, capture.text);
