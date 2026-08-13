@@ -24,9 +24,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:physical": "ANDROID_DEVICE_MCP_PHYSICAL=1 vitest run tests/physical-device",
+    "test": "node --import tsx --test",
+    "test:watch": "node --import tsx --test --watch",
+    "test:physical": "ANDROID_DEVICE_MCP_PHYSICAL=1 node --import tsx --test tests/physical-device",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "prepare": "npm run build"
   },
@@ -43,7 +43,6 @@
     "prettier": "^3.9.6",
     "tsx": "^4.23.12",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.67.0",
-    "vitest": "^4.1.10"
+    "typescript-eslint": "^8.67.0"
   }
 }
