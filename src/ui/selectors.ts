@@ -13,7 +13,7 @@ function compareText(actual: string | null, expected: string, mode: UiSelector['
     case 'contains':
       return left.includes(right);
     case 'regex':
-      return compileBoundedRegex(expected).test(caseSensitive ? actual : actual.toLocaleLowerCase());
+      return compileBoundedRegex(caseSensitive ? expected : expected.toLocaleLowerCase()).test(left);
   }
 }
 
