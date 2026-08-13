@@ -61,6 +61,7 @@ export class DeviceManager {
   private selectedSerial: string | null = null;
   private session: DeviceSession | null = null;
   private wasConnected = false;
+  private requiresReselection = false;
 
   constructor(
     private readonly adb: AdbClient,
@@ -77,11 +78,17 @@ export class DeviceManager {
         : devices.find((device) => device.serial === this.selectedSerial);
 
     if (this.selectedSerial !== null && selected === undefined) {
-      if (this.wasConnected) this.onDisconnect(this.selectedSerial);
+      if (this.wasConnected) {
+        this.requiresReselection = true;
+        this.onDisconnect(this.selectedSerial);
+      }
       this.wasConnected = false;
       devices = devices.map((device) => ({ ...device, selected: false }));
     } else if (selected !== undefined && selected !== null) {
-      if (this.wasConnected && !selected.authorized) this.onDisconnect(selected.serial);
+      if (this.wasConnected && !selected.authorized) {
+        this.requiresReselection = true;
+        this.onDisconnect(selected.serial);
+      }
       this.wasConnected = selected.authorized;
     }
 
@@ -100,6 +107,10 @@ export class DeviceManager {
         }));
         this.wasConnected = true;
       }
+    }
+
+    if (this.requiresReselection) {
+      devices = devices.map((device) => ({ ...device, selected: false }));
     }
 
     return devices;
@@ -152,6 +163,7 @@ export class DeviceManager {
 
     this.selectedSerial = serial;
     this.session = { sessionId: randomUUID(), serial, selectedAt: new Date().toISOString() };
+    this.requiresReselection = false;
     this.wasConnected = true;
     return { device: { ...device, selected: true }, session: this.session };
   }
@@ -163,6 +175,16 @@ export class DeviceManager {
         'Select one authorized Android device before using control tools.',
         {
           retryable: true,
+        },
+      );
+    }
+    if (this.requiresReselection) {
+      throw new AppError(
+        ErrorCode.DeviceDisconnected,
+        'The selected device was disconnected; select it again before resuming control.',
+        {
+          retryable: true,
+          details: { serial: this.selectedSerial, sessionId: this.session.sessionId },
         },
       );
     }
