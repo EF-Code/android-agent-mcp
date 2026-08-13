@@ -69,9 +69,10 @@ export class AndroidDeviceService {
     return (await this.devices.requireSelected()).serial;
   }
 
-  async screenObservation(serial = await this.selectedSerial()): Promise<ScreenObservation> {
-    const display = await this.properties.display(serial);
-    const foreground = await this.foreground.read(serial);
+  async screenObservation(serial?: string): Promise<ScreenObservation> {
+    const selectedSerial = serial ?? (await this.selectedSerial());
+    const display = await this.properties.display(selectedSerial);
+    const foreground = await this.foreground.read(selectedSerial);
     return {
       display: { width: display.resolution?.width ?? 0, height: display.resolution?.height ?? 0, rotation: 0 },
       foreground,
@@ -220,6 +221,13 @@ export class AndroidDeviceService {
 
   async beginEvidence(label: string | undefined, metadata: Record<string, unknown> | undefined): Promise<EvidenceSession> {
     const device = await this.deviceInfo();
-    return this.evidence.begin({ serverVersion: '0.1.0', adbVersion: await this.adb.version(), scrcpyVersion: this.scrcpy.status().capabilities?.version ?? null, device, metadata }, label);
+    const manifest = {
+      serverVersion: '0.1.0',
+      adbVersion: await this.adb.version(),
+      scrcpyVersion: this.scrcpy.status().capabilities?.version ?? null,
+      device,
+      ...(metadata === undefined ? {} : { metadata }),
+    };
+    return this.evidence.begin(manifest, label);
   }
 }

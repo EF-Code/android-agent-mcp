@@ -7,7 +7,7 @@ export function jsonContent(result: ResultEnvelope<unknown>): CallToolResult {
   return {
     content: [{ type: 'text', text }],
     isError: !result.ok,
-    structuredContent: result,
+    structuredContent: result as unknown as Record<string, unknown>,
   };
 }
 
@@ -20,7 +20,7 @@ export function imageContent(
       { type: 'image', data: png.toString('base64'), mimeType: 'image/png' },
       { type: 'text', text: JSON.stringify(result, null, 2) },
     ],
-    structuredContent: result,
+    structuredContent: result as unknown as Record<string, unknown>,
   };
 }
 
@@ -28,6 +28,6 @@ export function errorContent(error: ErrorEnvelope): CallToolResult {
   return {
     content: [{ type: 'text', text: JSON.stringify(error, null, 2) }],
     isError: true,
-    structuredContent: error,
+    structuredContent: error as unknown as Record<string, unknown>,
   };
 }
