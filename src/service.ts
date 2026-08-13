@@ -116,6 +116,7 @@ export class AndroidDeviceService {
         foreground: observation.foreground,
       });
     const shouldRedact = observation.foreground.packageName === null || !this.policy.isPackageAllowed(observation.foreground.packageName) || this.policy.isSensitivePackage(observation.foreground.packageName);
+    if (shouldRedact) this.evidence.pause('foreground package is sensitive, unavailable, or outside the allowlist');
     const safeSnapshot: UiSnapshot = shouldRedact
       ? {
           ...snapshot,
@@ -148,6 +149,9 @@ export class AndroidDeviceService {
 
   async requireCaptureForeground(operation: string): Promise<ForegroundApp> {
     const foreground = await this.currentForeground();
+    if (foreground.packageName === null || !this.policy.isPackageAllowed(foreground.packageName) || this.policy.isSensitivePackage(foreground.packageName)) {
+      this.evidence.pause(`capture blocked for ${foreground.packageName ?? 'unknown'} foreground package`);
+    }
     this.policy.assertObservationAllowed(foreground, operation);
     return foreground;
   }

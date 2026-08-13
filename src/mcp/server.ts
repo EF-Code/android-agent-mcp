@@ -49,27 +49,35 @@ function toolError(error: unknown) {
 
 function registerTool<Args extends ZodRawShapeCompat>(
   server: McpServer,
+  service: AndroidDeviceService,
   name: ToolName,
   config: { description: string; inputSchema: Args },
   callback: ToolCallback<Args>,
 ): void {
-  server.registerTool(name, { ...config, annotations: toolMetadata(name).annotations }, callback);
+  const wrapped = (async (...callbackArgs: Parameters<ToolCallback<Args>>) => {
+    const hadActiveEvidence = service.evidence.activeSession !== null;
+    if (hadActiveEvidence) await service.evidence.recordToolCall(name);
+    const result = await Reflect.apply(callback, undefined, callbackArgs);
+    if (!hadActiveEvidence) await service.evidence.recordToolCall(name);
+    return result;
+  }) as ToolCallback<Args>;
+  server.registerTool(name, { ...config, annotations: toolMetadata(name).annotations }, wrapped);
 }
 
 function registerReadOnlyTools(server: McpServer, service: AndroidDeviceService): void {
-  registerTool(server, 'device_list', { description: 'List connected Android devices and their ADB authorization states.', inputSchema: emptySchema }, async () => {
+  registerTool(server, service, 'device_list', { description: 'List connected Android devices and their ADB authorization states.', inputSchema: emptySchema }, async () => {
     try { return jsonContent(ok(await service.devices.list())); } catch (error) { return toolError(error); }
   });
 
-  registerTool(server, 'device_info', { description: 'Return normalized information for the selected device.', inputSchema: emptySchema }, async () => {
+  registerTool(server, service, 'device_info', { description: 'Return normalized information for the selected device.', inputSchema: emptySchema }, async () => {
     try { return jsonContent(ok(await service.deviceInfo(), { deviceSerial: await service.selectedSerial() })); } catch (error) { return toolError(error); }
   });
 
-  registerTool(server, 'mirror_status', { description: 'Return the status of the server-owned scrcpy process.', inputSchema: emptySchema }, async () => {
+  registerTool(server, service, 'mirror_status', { description: 'Return the status of the server-owned scrcpy process.', inputSchema: emptySchema }, async () => {
     try { return jsonContent(ok(service.scrcpy.status())); } catch (error) { return toolError(error); }
   });
 
-  registerTool(server, 'screen_capture', { description: 'Capture a validated PNG screenshot from the selected device.', inputSchema: captureSchema }, async (args) => {
+  registerTool(server, service, 'screen_capture', { description: 'Capture a validated PNG screenshot from the selected device.', inputSchema: captureSchema }, async (args) => {
     try {
       const serial = await service.selectedSerial();
       await service.requireCaptureForeground('screen capture');
@@ -86,15 +94,17 @@ function registerReadOnlyTools(server: McpServer, service: AndroidDeviceService)
     } catch (error) { return toolError(error); }
   });
 
-  registerTool(server, 'ui_dump', { description: 'Capture and normalize the selected device UIAutomator hierarchy.', inputSchema: uiDumpSchema }, async () => {
+  registerTool(server, service, 'ui_dump', { description: 'Capture and normalize the selected device UIAutomator hierarchy.', inputSchema: uiDumpSchema }, async () => {
     try {
       const snapshot = await service.captureUi();
+      const evidence = service.evidence.activeSession;
+      if (evidence !== null && !evidence.paused) await evidence.saveUi(`ui-dump-${Date.now()}`, snapshot);
       const data = { ...snapshot, nodes: snapshot.nodes.map((node) => ({ ...node, ...(node.flags.password ? { text: '[REDACTED]' } : {}) })) };
       return jsonContent(ok(data, { deviceSerial: await service.selectedSerial(), warnings: snapshot.warnings }));
     } catch (error) { return toolError(error); }
   });
 
-  registerTool(server, 'ui_find', { description: 'Find matching elements in a fresh or retained UI snapshot.', inputSchema: uiFindSchema }, async (args) => {
+  registerTool(server, service, 'ui_find', { description: 'Find matching elements in a fresh or retained UI snapshot.', inputSchema: uiFindSchema }, async (args) => {
     try {
       const snapshot = args.snapshot_id === undefined ? await service.captureUi() : await service.requireFreshSnapshot(args.snapshot_id);
       const matches = (await import('../ui/selectors.js')).findMatches(snapshot, toSelector(args.selector));
@@ -102,7 +112,7 @@ function registerReadOnlyTools(server: McpServer, service: AndroidDeviceService)
     } catch (error) { return toolError(error); }
   });
 
-  registerTool(server, 'app_list', { description: 'List bounded package metadata from the selected device.', inputSchema: appListSchema }, async (args) => {
+  registerTool(server, service, 'app_list', { description: 'List bounded package metadata from the selected device.', inputSchema: appListSchema }, async (args) => {
     try {
       const serial = await service.selectedSerial();
       const options = {
@@ -116,20 +126,21 @@ function registerReadOnlyTools(server: McpServer, service: AndroidDeviceService)
     } catch (error) { return toolError(error); }
   });
 
-  registerTool(server, 'app_info', { description: 'Inspect metadata for an allowlisted package.', inputSchema: appPackageSchema }, async (args) => {
+  registerTool(server, service, 'app_info', { description: 'Inspect metadata for an allowlisted package.', inputSchema: appPackageSchema }, async (args) => {
     try { service.policy.assertPackageAllowed(args.package_name); return jsonContent(ok(await service.packages.info(await service.selectedSerial(), args.package_name), { deviceSerial: await service.selectedSerial() })); } catch (error) { return toolError(error); }
   });
 
-  registerTool(server, 'permissions_list', { description: 'List requested and granted runtime permissions for an allowlisted package.', inputSchema: appPackageSchema }, async (args) => {
+  registerTool(server, service, 'permissions_list', { description: 'List requested and granted runtime permissions for an allowlisted package.', inputSchema: appPackageSchema }, async (args) => {
     try { service.policy.assertPackageAllowed(args.package_name); return jsonContent(ok(await service.permissions.list(await service.selectedSerial(), args.package_name), { deviceSerial: await service.selectedSerial() })); } catch (error) { return toolError(error); }
   });
 
-  registerTool(server, 'logcat_capture', { description: 'Capture bounded, filtered, and redacted logcat output.', inputSchema: logCaptureSchema }, async (args) => {
+  registerTool(server, service, 'logcat_capture', { description: 'Capture bounded, filtered, and redacted logcat output.', inputSchema: logCaptureSchema }, async (args) => {
     try {
       if (args.package_name !== undefined) service.policy.assertPackageAllowed(args.package_name);
       if (args.package_name === undefined && args.pid === undefined) {
         throw new AppError(ErrorCode.InvalidInput, 'Log capture requires a package name or PID filter.');
       }
+      await service.requireAllowedForeground('log capture');
       const serial = await service.selectedSerial();
       const options = {
         ...(args.package_name === undefined ? {} : { packageName: args.package_name }),
@@ -142,21 +153,24 @@ function registerReadOnlyTools(server: McpServer, service: AndroidDeviceService)
         ...(args.max_bytes === undefined ? {} : { maxBytes: args.max_bytes }),
         ...(args.include_crash_buffer === undefined ? {} : { includeCrashBuffer: args.include_crash_buffer }),
       };
-      return jsonContent(ok(await service.logcat.capture(serial, options), { deviceSerial: serial }));
+      const capture = await service.logcat.capture(serial, options);
+      const evidence = service.evidence.activeSession;
+      if (evidence !== null && !evidence.paused) await evidence.saveLog(`logcat-${Date.now()}`, capture.text);
+      return jsonContent(ok(capture, { deviceSerial: serial }));
     } catch (error) { return toolError(error); }
   });
 
-  registerTool(server, 'logcat_crashes', { description: 'Return bounded recent crash and ANR evidence for an allowlisted package.', inputSchema: appPackageSchema }, async (args) => {
+  registerTool(server, service, 'logcat_crashes', { description: 'Return bounded recent crash and ANR evidence for an allowlisted package.', inputSchema: appPackageSchema }, async (args) => {
     try { service.policy.assertPackageAllowed(args.package_name); return jsonContent(ok(await service.logcat.crashes(await service.selectedSerial(), args.package_name), { deviceSerial: await service.selectedSerial() })); } catch (error) { return toolError(error); }
   });
 }
 
 function registerInteractiveTools(server: McpServer, service: AndroidDeviceService): void {
-  registerTool(server, 'device_select', { description: 'Select one authorized Android device by exact serial.', inputSchema: serialSchema }, async (args) => {
+  registerTool(server, service, 'device_select', { description: 'Select one authorized Android device by exact serial.', inputSchema: serialSchema }, async (args) => {
     try { const result = await service.devices.select(args.serial); return jsonContent(ok(result, { deviceSerial: args.serial })); } catch (error) { return toolError(error); }
   });
 
-  registerTool(server, 'mirror_start', { description: 'Start a visible server-owned scrcpy mirror for the selected device.', inputSchema: mirrorStartSchema }, async (args) => {
+  registerTool(server, service, 'mirror_start', { description: 'Start a visible server-owned scrcpy mirror for the selected device.', inputSchema: mirrorStartSchema }, async (args) => {
     try {
       const serial = await service.selectedSerial();
       await service.requireCaptureForeground('starting scrcpy mirror');
@@ -172,11 +186,11 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
     } catch (error) { return toolError(error); }
   });
 
-  registerTool(server, 'mirror_stop', { description: 'Stop only the server-owned scrcpy mirror.', inputSchema: emptySchema }, async () => {
+  registerTool(server, service, 'mirror_stop', { description: 'Stop only the server-owned scrcpy mirror.', inputSchema: emptySchema }, async () => {
     try { return jsonContent(ok(await service.scrcpy.stop())); } catch (error) { return toolError(error); }
   });
 
-  registerTool(server, 'ui_tap', { description: 'Tap one uniquely resolved visible semantic UI element and verify the result.', inputSchema: uiTapSchema }, async (args) => {
+  registerTool(server, service, 'ui_tap', { description: 'Tap one uniquely resolved visible semantic UI element and verify the result.', inputSchema: uiTapSchema }, async (args) => {
     try {
       const selectorNodeId = (args.selector as { nodeId?: string } | undefined)?.nodeId;
       const requestedNodeId = args.node_id ?? selectorNodeId;
@@ -189,11 +203,11 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
     } catch (error) { return toolError(error); }
   });
 
-  registerTool(server, 'screen_tap', { description: 'Tap validated native device-pixel coordinates as a fallback.', inputSchema: coordinateSchema }, async (args) => {
+  registerTool(server, service, 'screen_tap', { description: 'Tap validated native device-pixel coordinates as a fallback.', inputSchema: coordinateSchema }, async (args) => {
     try { await service.requireAllowedForeground('screen tap'); const result = await service.tapCoordinates(args.x, args.y, args.verify_change ?? true); return jsonContent(ok({ before_snapshot_id: result.before?.snapshotId ?? null, after_snapshot_id: result.after?.snapshotId ?? null, changed: result.before !== null && result.after !== null && JSON.stringify(result.before.nodes) !== JSON.stringify(result.after.nodes) }, { deviceSerial: await service.selectedSerial() })); } catch (error) { return toolError(error); }
   });
 
-  registerTool(server, 'screen_swipe', { description: 'Perform a bounded native coordinate or deterministic directional swipe.', inputSchema: swipeSchema }, async (args) => {
+  registerTool(server, service, 'screen_swipe', { description: 'Perform a bounded native coordinate or deterministic directional swipe.', inputSchema: swipeSchema }, async (args) => {
     try {
       await service.requireAllowedForeground('screen swipe');
       const options = {
@@ -210,19 +224,19 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
     } catch (error) { return toolError(error); }
   });
 
-  registerTool(server, 'screen_long_press', { description: 'Perform a bounded stationary long press.', inputSchema: { ...coordinateSchema, duration_ms: z.number().int().min(250).max(30_000).optional() } }, async (args) => {
+  registerTool(server, service, 'screen_long_press', { description: 'Perform a bounded stationary long press.', inputSchema: { ...coordinateSchema, duration_ms: z.number().int().min(250).max(30_000).optional() } }, async (args) => {
     try { await service.requireAllowedForeground('screen long press'); const serial = await service.selectedSerial(); await service.longPress(args.x, args.y, args.duration_ms ?? 750); return jsonContent(ok({ x: args.x, y: args.y, duration_ms: args.duration_ms ?? 750 }, { deviceSerial: serial })); } catch (error) { return toolError(error); }
   });
 
-  registerTool(server, 'key_press', { description: 'Press an allowlisted Android testing key.', inputSchema: keyPressSchema }, async (args) => {
+  registerTool(server, service, 'key_press', { description: 'Press an allowlisted Android testing key.', inputSchema: keyPressSchema }, async (args) => {
     try { await service.requireAllowedForeground('key press'); const serial = await service.selectedSerial(); await service.input.key(serial, args.key as AllowedKey, args.allow_power ?? false); return jsonContent(ok({ key: args.key }, { deviceSerial: serial })); } catch (error) { return toolError(error); }
   });
 
-  registerTool(server, 'text_type', { description: 'Type safe printable ASCII test text into the focused field; never use for secrets.', inputSchema: textTypeSchema }, async (args) => {
+  registerTool(server, service, 'text_type', { description: 'Type safe printable ASCII test text into the focused field; never use for secrets.', inputSchema: textTypeSchema }, async (args) => {
     try { await service.requireAllowedForeground('text entry'); const snapshot = await service.captureUi(); if (snapshot.nodes.some((node) => node.flags.focused && node.flags.password)) throw new AppError(ErrorCode.ProhibitedOperation, 'Typing into password fields is blocked.'); const count = await service.input.text(await service.selectedSerial(), args.text); return jsonContent(ok({ character_count: count }, { deviceSerial: await service.selectedSerial() })); } catch (error) { return toolError(error); }
   });
 
-  registerTool(server, 'app_launch', { description: 'Launch an allowlisted package and verify it becomes foreground.', inputSchema: appPackageSchema }, async (args) => {
+  registerTool(server, service, 'app_launch', { description: 'Launch an allowlisted package and verify it becomes foreground.', inputSchema: appPackageSchema }, async (args) => {
     try {
       service.policy.assertPackageAllowed(args.package_name);
       const serial = await service.selectedSerial();
@@ -235,11 +249,11 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
     } catch (error) { return toolError(error); }
   });
 
-  registerTool(server, 'app_stop', { description: 'Force-stop an allowlisted package.', inputSchema: appPackageSchema }, async (args) => {
+  registerTool(server, service, 'app_stop', { description: 'Force-stop an allowlisted package.', inputSchema: appPackageSchema }, async (args) => {
     try { service.policy.assertPackageAllowed(args.package_name); const serial = await service.selectedSerial(); await service.packages.stop(serial, args.package_name); return jsonContent(ok({ package_name: args.package_name, stopped: true }, { deviceSerial: serial })); } catch (error) { return toolError(error); }
   });
 
-  registerTool(server, 'wait_for_ui', { description: 'Poll for a bounded UI, foreground, disappearance, or screen-change condition.', inputSchema: waitForUiSchema }, async (args) => {
+  registerTool(server, service, 'wait_for_ui', { description: 'Poll for a bounded UI, foreground, disappearance, or screen-change condition.', inputSchema: waitForUiSchema }, async (args) => {
     try {
       if (args.package_name !== undefined) service.policy.assertPackageAllowed(args.package_name);
       const options = {
@@ -257,27 +271,27 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
 }
 
 function registerMutationTools(server: McpServer, service: AndroidDeviceService): void {
-  registerTool(server, 'app_install', { description: 'Approval-required installation of an APK under an allowed host root.', inputSchema: installSchema }, async (args) => {
+  registerTool(server, service, 'app_install', { description: 'Approval-required installation of an APK under an allowed host root.', inputSchema: installSchema }, async (args) => {
     try { service.policy.assertMutationAllowed('app_install'); const serial = await service.selectedSerial(); const apk = await service.installer.validate(args.path); return jsonContent(ok(await service.installer.install(serial, apk, args.replace ?? false), { deviceSerial: serial })); } catch (error) { return toolError(error); }
   });
 
-  registerTool(server, 'app_clear_data', { description: 'Approval-required irreversible clearing of local data for an allowlisted test package.', inputSchema: clearDataSchema }, async (args) => {
+  registerTool(server, service, 'app_clear_data', { description: 'Approval-required irreversible clearing of local data for an allowlisted test package.', inputSchema: clearDataSchema }, async (args) => {
     try { service.policy.assertMutationAllowed('app_clear_data'); service.policy.assertPackageAllowed(args.package_name); const serial = await service.selectedSerial(); const output = await service.packages.clearData(serial, args.package_name); return jsonContent(ok({ package_name: args.package_name, output, irreversible: true }, { deviceSerial: serial })); } catch (error) { return toolError(error); }
   });
 
-  registerTool(server, 'permissions_set', { description: 'Approval-required grant or revoke of a requested runtime permission.', inputSchema: permissionSetSchema }, async (args) => {
+  registerTool(server, service, 'permissions_set', { description: 'Approval-required grant or revoke of a requested runtime permission.', inputSchema: permissionSetSchema }, async (args) => {
     try { service.policy.assertMutationAllowed('permissions_set'); service.policy.assertPackageAllowed(args.package_name); const serial = await service.selectedSerial(); await service.permissions.set(serial, args.package_name, args.permission, args.action); return jsonContent(ok({ package_name: args.package_name, permission: args.permission, action: args.action }, { deviceSerial: serial })); } catch (error) { return toolError(error); }
   });
 }
 
 function registerEvidenceTools(server: McpServer, service: AndroidDeviceService): void {
-  registerTool(server, 'evidence_begin', { description: 'Begin a sanitized, bounded local evidence session.', inputSchema: evidenceBeginSchema }, async (args) => {
+  registerTool(server, service, 'evidence_begin', { description: 'Begin a sanitized, bounded local evidence session.', inputSchema: evidenceBeginSchema }, async (args) => {
     try { const session = await service.beginEvidence(args.label, args.metadata); return jsonContent(ok(session.summary)); } catch (error) { return toolError(error); }
   });
-  registerTool(server, 'evidence_note', { description: 'Add a redacted note to the active evidence session.', inputSchema: evidenceNoteSchema }, async (args) => {
+  registerTool(server, service, 'evidence_note', { description: 'Add a redacted note to the active evidence session.', inputSchema: evidenceNoteSchema }, async (args) => {
     try { const session: EvidenceSession = service.evidence.requireActive(); await session.note(args.message, args.details); return jsonContent(ok({ evidence_id: session.evidenceId })); } catch (error) { return toolError(error); }
   });
-  registerTool(server, 'evidence_finish', { description: 'Finish the active evidence session and write its summary.', inputSchema: evidenceFinishSchema }, async () => {
+  registerTool(server, service, 'evidence_finish', { description: 'Finish the active evidence session and write its summary.', inputSchema: evidenceFinishSchema }, async () => {
     try { return jsonContent(ok(await service.evidence.finish())); } catch (error) { return toolError(error); }
   });
 }
