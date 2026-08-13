@@ -16,6 +16,7 @@ export interface ServerConfig {
   allowedApkRoots: string[];
   evidenceRoot: string;
   maxScreenshotBytes: number;
+  maxApkBytes: number;
   maxLogBytes: number;
   maxCommandOutputBytes: number;
   maxEvidenceBytes: number;
