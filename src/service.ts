@@ -71,10 +71,10 @@ export class AndroidDeviceService {
 
   async screenObservation(serial?: string): Promise<ScreenObservation> {
     const selectedSerial = serial ?? (await this.selectedSerial());
-    const display = await this.properties.display(selectedSerial);
+    const [display, rotation] = await Promise.all([this.properties.display(selectedSerial), this.properties.rotation(selectedSerial)]);
     const foreground = await this.foreground.read(selectedSerial);
     return {
-      display: { width: display.resolution?.width ?? 0, height: display.resolution?.height ?? 0, rotation: 0 },
+      display: { width: display.resolution?.width ?? 0, height: display.resolution?.height ?? 0, rotation },
       foreground,
       observedAt: new Date().toISOString(),
     };

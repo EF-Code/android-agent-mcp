@@ -72,6 +72,13 @@ export class AdbProperties {
     };
   }
 
+  async rotation(serial: string): Promise<0 | 1 | 2 | 3> {
+    const output = await this.adb.text(this.adb.shell(serial, ['dumpsys', 'input'], { timeoutMs: 10_000, maxOutputBytes: 64_000 }));
+    const match = /(?:SurfaceOrientation|mSurfaceOrientation|mRotation)\s*[:=]\s*(\d+)/u.exec(output);
+    const rotation = match === null ? 0 : Number(match[1]);
+    return rotation === 1 || rotation === 2 || rotation === 3 ? rotation : 0;
+  }
+
   async battery(serial: string): Promise<{ level: number | null; status: string | null; plugged: string | null; temperatureC: number | null }> {
     const output = await this.adb.text(this.adb.shell(serial, ['dumpsys', 'battery'], { maxOutputBytes: 32_000 }));
     const value = (name: string): string | null => {
