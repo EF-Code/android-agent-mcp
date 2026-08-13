@@ -138,14 +138,11 @@ export class AdbLogcat {
 
   async crashes(serial: string, packageName: string, maxLines = 500): Promise<CrashEvidence[]> {
     validatePackageName(packageName);
-    const capture = await this.capture(serial, {
-      packageName,
-      durationMs: 1_000,
-      maxLines,
-      includeCrashBuffer: true,
-      severity: 'W',
+    const output = await this.adb.device(serial, ['logcat', '-d', '-b', 'crash', '-v', 'threadtime', '-t', String(Math.min(maxLines, 2_000))], {
+      timeoutMs: 15_000,
+      maxOutputBytes: Math.min(this.defaultMaxBytes, 2_000_000),
     });
-    return parseCrashBlocks(capture.text).filter((crash) => crash.processPackage === packageName || crash.processPackage === null);
+    return parseCrashBlocks(redactLogText(output.stdout.toString('utf8'))).filter((crash) => crash.processPackage === packageName || crash.processPackage === null);
   }
 }
 
