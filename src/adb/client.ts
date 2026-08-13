@@ -23,14 +23,15 @@ export class AdbClient {
   }
 
   async host(args: readonly string[], options: Partial<RunOptions> = {}): Promise<CommandOutput> {
-    return this.runner.run(this.options.adbPath, args, {
+    const runOptions: RunOptions = {
       timeoutMs: options.timeoutMs ?? this.options.defaultTimeoutMs,
       maxOutputBytes: options.maxOutputBytes ?? this.options.maxOutputBytes,
-      signal: options.signal,
-      secretArgIndexes: options.secretArgIndexes,
-      env: options.env,
-      environmentKeys: options.environmentKeys,
-    });
+    };
+    if (options.signal !== undefined) runOptions.signal = options.signal;
+    if (options.secretArgIndexes !== undefined) runOptions.secretArgIndexes = options.secretArgIndexes;
+    if (options.env !== undefined) runOptions.env = options.env;
+    if (options.environmentKeys !== undefined) runOptions.environmentKeys = options.environmentKeys;
+    return this.runner.run(this.options.adbPath, args, runOptions);
   }
 
   async device(serial: string, args: readonly string[], options: Partial<RunOptions> = {}): Promise<CommandOutput> {
