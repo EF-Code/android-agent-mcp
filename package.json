@@ -1,5 +1,5 @@
 {
-  "name": "@ef-code/android-mcp",
+  "name": "@ef-code/android-agent-mcp",
   "version": "0.1.0",
   "description": "A local MCP server for observable, policy-controlled Android device operation.",
   "type": "module",
@@ -8,16 +8,17 @@
     "node": ">=22"
   },
   "bin": {
+    "android-agent-mcp": "dist/index.js",
     "android-mcp": "dist/index.js",
     "scrcpy-agent": "dist/index.js"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/EF-Code/android-mcp.git"
+    "url": "git+https://github.com/EF-Code/android-agent-mcp.git"
   },
-  "homepage": "https://github.com/EF-Code/android-mcp#readme",
+  "homepage": "https://github.com/EF-Code/android-agent-mcp#readme",
   "bugs": {
-    "url": "https://github.com/EF-Code/android-mcp/issues"
+    "url": "https://github.com/EF-Code/android-agent-mcp/issues"
   },
   "publishConfig": {
     "access": "public"
