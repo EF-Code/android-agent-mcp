@@ -33,8 +33,10 @@ test('MCP stdio server initializes with instructions and exposes stable tools', 
       assert.ok(names.has(expected), `missing tool ${expected}`);
     }
     const result = await client.callTool({ name: 'device_list', arguments: {} });
-    const text = result.content.find((item) => item.type === 'text');
+    const content = result.content as Array<{ type: 'text' | 'image'; text?: string }>;
+    const text = content.find((item) => item.type === 'text');
     assert.ok(text !== undefined && text.type === 'text');
+    assert.ok(text.text !== undefined);
     const parsed = JSON.parse(text.text) as { ok: boolean; data: unknown };
     assert.equal(parsed.ok, true);
     assert.ok(Array.isArray(parsed.data));
