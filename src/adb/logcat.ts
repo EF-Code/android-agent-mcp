@@ -107,7 +107,7 @@ export class AdbLogcat {
       throw new AppError(ErrorCode.InvalidInput, 'Logcat since timestamp must use logcat timestamp format.');
     }
 
-    const args = ['logcat', '-v', 'threadtime', '-T', options.since ?? '1'];
+    const args = ['logcat', '-d', '-v', 'threadtime', '-T', options.since ?? '1'];
     if (pid !== undefined && pid !== null) args.push(`--pid=${pid}`);
     args.push('*:' + severity);
     for (const tag of tags) args.push(`${tag}:${severity}`);
@@ -120,7 +120,7 @@ export class AdbLogcat {
     let lines = primary.lines;
     let truncated = primary.truncated || output.record.stdoutTruncated;
     if (options.includeCrashBuffer === true) {
-      const crash = await this.adb.device(serial, ['logcat', '-b', 'crash', '-v', 'threadtime', '-t', String(Math.min(maxLines, 500))], {
+      const crash = await this.adb.device(serial, ['logcat', '-d', '-b', 'crash', '-v', 'threadtime', '-t', String(Math.min(maxLines, 500))], {
         timeoutMs: 10_000,
         maxOutputBytes: Math.min(maxBytes, 500_000),
       });
