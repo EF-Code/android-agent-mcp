@@ -11,16 +11,25 @@ export interface PermissionState {
 
 const SPECIAL_PERMISSION_PREFIXES = [
   'android.permission.MANAGE_',
+  'android.permission.REQUEST_INSTALL_PACKAGES',
+  'android.permission.SYSTEM_ALERT_WINDOW',
+  'android.permission.PACKAGE_USAGE_STATS',
+  'android.permission.MANAGE_EXTERNAL_STORAGE',
+  'android.permission.ACCESS_NOTIFICATION_POLICY',
+  'android.permission.SCHEDULE_EXACT_ALARM',
+  'android.permission.USE_EXACT_ALARM',
   'android.permission.WRITE_SETTINGS',
   'android.permission.SYSTEM_',
   'android.permission.PACKAGE_',
   'android.permission.BIND_',
+  'android.permission.CHANGE_COMPONENT_ENABLED_STATE',
+  'android.permission.MOUNT_UNMOUNT_FILESYSTEMS',
   'android.permission.INTERACT_ACROSS_USERS',
   'android.permission.NOTIFICATION_',
   'android.permission.VPN_',
 ];
 
-function isSpecialPermission(permission: string): boolean {
+export function isSpecialPermission(permission: string): boolean {
   return SPECIAL_PERMISSION_PREFIXES.some((prefix) => permission.startsWith(prefix));
 }
 

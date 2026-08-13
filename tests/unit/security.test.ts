@@ -4,6 +4,7 @@ import test from 'node:test';
 import { ErrorCode } from '../../src/errors/codes.js';
 import { AppError } from '../../src/errors/app-error.js';
 import { Policy } from '../../src/policy/policy.js';
+import { isSpecialPermission } from '../../src/adb/permissions.js';
 import { redactLogText, redactSensitiveUiText, redactUiText, REDACTED } from '../../src/policy/redaction.js';
 import { validateSelector } from '../../src/validation/selectors.js';
 import { defaultConfig } from '../../src/config/defaults.js';
@@ -33,6 +34,20 @@ test('requires an authorized, non-sensitive foreground package for observations'
   assert.equal(policy.assertObservationAllowed({ packageName: 'com.example.app', activity: '.Main', pid: 1 }, 'capture'), 'com.example.app');
   assert.throws(() => policy.assertObservationAllowed({ packageName: null, activity: null, pid: null }, 'capture'), (error: unknown) => error instanceof AppError && error.code === ErrorCode.ForegroundUnknown);
   assert.throws(() => policy.assertObservationAllowed({ packageName: 'com.android.settings', activity: '.Settings', pid: 2 }, 'capture'), (error: unknown) => error instanceof AppError && error.code === ErrorCode.SensitivePackage);
+});
+
+test('rejects Android special-access and policy-level permissions', () => {
+  for (const permission of [
+    'android.permission.REQUEST_INSTALL_PACKAGES',
+    'android.permission.SYSTEM_ALERT_WINDOW',
+    'android.permission.BIND_ACCESSIBILITY_SERVICE',
+    'android.permission.BIND_VPN_SERVICE',
+    'android.permission.MANAGE_EXTERNAL_STORAGE',
+    'android.permission.INTERACT_ACROSS_USERS_FULL',
+  ]) {
+    assert.equal(isSpecialPermission(permission), true, permission);
+  }
+  assert.equal(isSpecialPermission('android.permission.CAMERA'), false);
 });
 
 test('rejects unsafe selector regexes and deeply nested relationships', () => {
