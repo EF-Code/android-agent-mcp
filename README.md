@@ -46,11 +46,21 @@ It never installs packages, changes udev rules, restarts ADB, or uses elevated p
 ```zsh
 git clone https://github.com/EF-Code/android-agent-mcp.git
 cd android-agent-mcp
-npm run install:local
+npm run install:guided
 npm run verify
 ```
 
-`npm run install:local` runs the locked local dependency install, builds the server, and prints the resolved absolute MCP entrypoint and Codex registration command. It does not install system packages, change udev rules, restart ADB, or use elevated privileges. Use `npm run install:local -- --skip-dependencies` when dependencies are already installed; add `--check-environment` to run the read-only ADB/scrcpy preflight during installation.
+`npm run install:guided` runs the locked local dependency install, builds the server, detects supported MCP hosts, and writes their native local stdio configuration. The compatibility alias `npm run install:local` remains available. It does not install system packages, change udev rules, restart ADB, or use elevated privileges. Use `npm run install:guided -- --skip-dependencies` when dependencies are already installed; add `--check-environment` to run the read-only ADB/scrcpy preflight during installation.
+
+The same guided setup can be run after dependencies are installed:
+
+```zsh
+npm run setup
+node dist/index.js setup --client codex
+node dist/index.js doctor
+```
+
+See [the installer guide](docs/installation.md) for supported hosts, native configuration locations, backups, preview mode, and generic configuration output.
 
 The executable is then:
 
@@ -66,21 +76,27 @@ node /absolute/path/to/android-agent-mcp/dist/index.js
 
 ## Install from npm
 
-Install the published CLI globally:
+The easiest path for a published release is:
 
 ```zsh
-npm install --global android-agent-mcp
-command -v android-agent-mcp
+npx -y android-agent-mcp@0.2.0 setup
 ```
 
-Then configure your MCP client to launch `android-agent-mcp`. The executable is a stdio server, so it is normally started by the client instead of run interactively.
+This downloads the package, detects supported hosts, and configures only the hosts whose commands are available. No repository checkout is required. For a reusable global installation:
+
+```zsh
+npm install --global android-agent-mcp@0.2.0
+android-agent-mcp setup
+```
+
+The package also exposes `android-agent-mcp doctor` and `android-agent-mcp setup --dry-run`. The executable is a stdio server during normal MCP operation; `setup` and `doctor` are the installer subcommands.
 
 Alternatively, let an MCP client download a pinned release when it starts the server. Configure the command as `npx` with these arguments:
 
 ```json
 {
   "command": "npx",
-  "args": ["--yes", "android-agent-mcp@0.1.0"]
+  "args": ["--yes", "android-agent-mcp@0.2.0"]
 }
 ```
 
