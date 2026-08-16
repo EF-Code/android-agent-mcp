@@ -1,6 +1,6 @@
 {
   "name": "android-agent-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A local MCP server for observable, policy-controlled Android device operation.",
   "type": "module",
   "license": "MIT",
@@ -28,6 +28,7 @@
     "docs/codex-setup.md",
     "docs/compatibility.md",
     "docs/configuration.md",
+    "docs/installation.md",
     "docs/phone-setup.md",
     "docs/security-model.md",
     "docs/troubleshooting.md",
@@ -43,7 +44,10 @@
     "test:watch": "npm run build:test && node --test --watch 'dist-test/tests/**/*.test.js'",
     "test:physical": "ANDROID_AGENT_MCP_PHYSICAL=1 npm run build:test && ANDROID_AGENT_MCP_PHYSICAL=1 node --test 'dist-test/tests/physical-device/**/*.test.js'",
     "check:environment": "node scripts/check-environment.mjs",
-    "install:local": "node scripts/install-local.mjs",
+    "install:guided": "node scripts/install.mjs",
+    "install:local": "node scripts/install.mjs",
+    "setup": "npm run build && node dist/index.js setup",
+    "doctor": "npm run build && node dist/index.js doctor",
     "verify": "npm run format:check && npm run typecheck && npm test && npm run build && npm pack --dry-run",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "prepare": "npm run build",
@@ -52,6 +56,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
     "fast-xml-parser": "^5.10.1",
+    "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
