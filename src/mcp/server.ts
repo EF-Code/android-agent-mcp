@@ -536,7 +536,6 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
     },
     async (args) => {
       try {
-        await service.requireAllowedForeground('screen tap');
         const result = await service.tapCoordinates(
           args.x,
           args.y,
@@ -546,7 +545,7 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
         );
         return jsonContent(
           ok(verificationData(result), {
-            deviceSerial: await service.selectedSerial(),
+            deviceSerial: await service.selectedSerial({ checkConnection: false }),
             warnings: result.after?.warnings ?? result.before?.warnings ?? [],
           }),
         );
@@ -566,7 +565,6 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
     },
     async (args) => {
       try {
-        await service.requireAllowedForeground('screen swipe');
         const options = {
           ...(args.start_x === undefined ? {} : { startX: args.start_x }),
           ...(args.start_y === undefined ? {} : { startY: args.start_y }),
@@ -581,7 +579,7 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
         const result = await service.swipe(options);
         return jsonContent(
           ok(verificationData(result), {
-            deviceSerial: await service.selectedSerial(),
+            deviceSerial: await service.selectedSerial({ checkConnection: false }),
             warnings: result.after?.warnings ?? result.before?.warnings ?? [],
           }),
         );
@@ -614,7 +612,7 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
             durationMs: action.duration_ms,
           };
         });
-        const serial = await service.selectedSerial();
+        const serial = await service.selectedSerial({ checkConnection: false });
         const result = await service.inputSequence({
           actions,
           verifyChange: args.verify_change ?? false,
@@ -651,8 +649,7 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
     },
     async (args) => {
       try {
-        await service.requireAllowedForeground('screen long press');
-        const serial = await service.selectedSerial();
+        const serial = await service.selectedSerial({ checkConnection: false });
         const result = await service.longPress(
           args.x,
           args.y,
@@ -691,7 +688,7 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
     },
     async (args) => {
       try {
-        const serial = await service.selectedSerial();
+        const serial = await service.selectedSerial({ checkConnection: false });
         const result = await service.pressKey(
           args.key as AllowedKey,
           args.verify_change ?? false,

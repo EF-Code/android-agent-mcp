@@ -168,7 +168,7 @@ export class DeviceManager {
     return { device: { ...device, selected: true }, session: this.session };
   }
 
-  async requireSelected(): Promise<DeviceSession> {
+  async requireSelected(options: { checkConnection?: boolean } = {}): Promise<DeviceSession> {
     if (this.session === null || this.selectedSerial === null) {
       throw new AppError(
         ErrorCode.NoDeviceSelected,
@@ -188,6 +188,7 @@ export class DeviceManager {
         },
       );
     }
+    if (options.checkConnection === false) return this.session;
     const devices = await this.list();
     const selected = devices.find((device) => device.serial === this.selectedSerial);
     if (selected === undefined) {

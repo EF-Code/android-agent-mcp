@@ -58,6 +58,7 @@ test('requires explicit reselection after disconnect and same-serial reconnect',
   );
 
   const initial = await manager.select('phone-a');
+  assert.equal((await manager.requireSelected({ checkConnection: false })).serial, 'phone-a');
   await assert.rejects(
     () => manager.requireSelected(),
     (error: unknown) => error instanceof AppError && error.code === ErrorCode.DeviceDisconnected,

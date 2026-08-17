@@ -146,8 +146,8 @@ export class AndroidDeviceService {
     this.evidence.pause(`selected device ${serial} disconnected`);
   }
 
-  async selectedSerial(): Promise<string> {
-    const selected = await this.devices.requireSelected();
+  async selectedSerial(options: { checkConnection?: boolean } = {}): Promise<string> {
+    const selected = await this.devices.requireSelected(options);
     await this.ensureAutoMirror();
     return selected.serial;
   }
@@ -301,18 +301,18 @@ export class AndroidDeviceService {
     return this.snapshots.put(safeSnapshot);
   }
 
-  async currentForeground(): Promise<ForegroundApp> {
-    return this.foreground.read(await this.selectedSerial());
+  async currentForeground(serial?: string): Promise<ForegroundApp> {
+    return this.foreground.read(serial ?? (await this.selectedSerial()));
   }
 
-  async requireAllowedForeground(operation: string): Promise<ForegroundApp> {
-    const foreground = await this.currentForeground();
+  async requireAllowedForeground(operation: string, serial?: string): Promise<ForegroundApp> {
+    const foreground = await this.currentForeground(serial);
     this.policy.assertForegroundAllowed(foreground, operation);
     return foreground;
   }
 
-  async requireCaptureForeground(operation: string): Promise<ForegroundApp> {
-    const foreground = await this.currentForeground();
+  async requireCaptureForeground(operation: string, serial?: string): Promise<ForegroundApp> {
+    const foreground = await this.currentForeground(serial);
     if (
       foreground.packageName === null ||
       !this.policy.isPackageAllowed(foreground.packageName) ||
@@ -335,9 +335,9 @@ export class AndroidDeviceService {
     });
   }
 
-  private async pixelDigest(): Promise<string> {
-    await this.requireCaptureForeground('pixel verification');
-    return (await this.screenshots.capture(await this.selectedSerial())).sha256;
+  private async pixelDigest(serial?: string): Promise<string> {
+    await this.requireCaptureForeground('pixel verification', serial);
+    return (await this.screenshots.capture(serial ?? (await this.selectedSerial()))).sha256;
   }
 
   async captureLogcat(
@@ -411,7 +411,7 @@ export class AndroidDeviceService {
     afterPixelSha256: string | null;
   }> {
     const serial = await this.selectedSerial();
-    const foreground = await this.requireAllowedForeground('semantic tap');
+    const foreground = await this.requireAllowedForeground('semantic tap', serial);
     const before =
       sourceSnapshot === undefined
         ? await this.captureUi()
@@ -439,12 +439,15 @@ export class AndroidDeviceService {
       );
     }
     this.policy.assertPackageAllowed(match.node.packageName);
-    const actionForeground = await this.requireAllowedForeground('semantic tap before action');
+    const actionForeground = await this.requireAllowedForeground(
+      'semantic tap before action',
+      serial,
+    );
     assertSameForeground(before.foreground, actionForeground, 'the semantic tap');
     await this.input.tap(serial, match.node.center.x, match.node.center.y);
     await this.stabilize(verifyChange ? STARTUP_WAIT_MS : 0);
     const after = verifyChange ? await this.captureUi() : null;
-    const afterPixelSha256 = verifyPixels ? await this.pixelDigest() : null;
+    const afterPixelSha256 = verifyPixels ? await this.pixelDigest(serial) : null;
     return { before, after, nodeId: match.node.nodeId, beforePixelSha256, afterPixelSha256 };
   }
 
@@ -455,8 +458,8 @@ export class AndroidDeviceService {
     verifyPixels = false,
     settleMs?: number,
   ): Promise<ActionObservation> {
-    const serial = await this.selectedSerial();
-    await this.requireAllowedForeground('screen tap');
+    const serial = await this.selectedSerial({ checkConnection: false });
+    await this.requireAllowedForeground('screen tap', serial);
     const observation = await this.screenObservation(serial);
     validateCoordinate(x, 'x');
     validateCoordinate(y, 'y');
@@ -473,12 +476,12 @@ export class AndroidDeviceService {
       );
     }
     const before = verifyChange ? await this.captureUi() : null;
-    const beforePixelSha256 = verifyPixels ? await this.pixelDigest() : null;
-    await this.requireAllowedForeground('screen tap before action');
+    const beforePixelSha256 = verifyPixels ? await this.pixelDigest(serial) : null;
+    await this.requireAllowedForeground('screen tap before action', serial);
     await this.input.tap(serial, x, y);
     await this.stabilize(settleMs ?? (verifyChange ? STARTUP_WAIT_MS : 0));
     const after = verifyChange ? await this.captureUi() : null;
-    const afterPixelSha256 = verifyPixels ? await this.pixelDigest() : null;
+    const afterPixelSha256 = verifyPixels ? await this.pixelDigest(serial) : null;
     return { before, after, beforePixelSha256, afterPixelSha256 };
   }
 
@@ -493,8 +496,8 @@ export class AndroidDeviceService {
     verifyPixels?: boolean;
     settleMs?: number;
   }): Promise<ActionObservation> {
-    const serial = await this.selectedSerial();
-    await this.requireAllowedForeground('screen swipe');
+    const serial = await this.selectedSerial({ checkConnection: false });
+    await this.requireAllowedForeground('screen swipe', serial);
     const observation = await this.screenObservation(serial);
     const width = observation.display.width;
     const height = observation.display.height;
@@ -554,8 +557,8 @@ export class AndroidDeviceService {
       );
     }
     const before = options.verifyChange ? await this.captureUi() : null;
-    const beforePixelSha256 = options.verifyPixels === true ? await this.pixelDigest() : null;
-    await this.requireAllowedForeground('screen swipe before action');
+    const beforePixelSha256 = options.verifyPixels === true ? await this.pixelDigest(serial) : null;
+    await this.requireAllowedForeground('screen swipe before action', serial);
     await this.input.swipe(
       serial,
       startX!,
@@ -566,7 +569,7 @@ export class AndroidDeviceService {
     );
     await this.stabilize(options.settleMs ?? (options.verifyChange ? STARTUP_WAIT_MS : 0));
     const after = options.verifyChange ? await this.captureUi() : null;
-    const afterPixelSha256 = options.verifyPixels === true ? await this.pixelDigest() : null;
+    const afterPixelSha256 = options.verifyPixels === true ? await this.pixelDigest(serial) : null;
     return { before, after, beforePixelSha256, afterPixelSha256 };
   }
 
@@ -577,8 +580,8 @@ export class AndroidDeviceService {
     verifyPixels?: boolean;
     settleMs?: number;
   }): Promise<ActionObservation> {
-    const serial = await this.selectedSerial();
-    await this.requireAllowedForeground('screen input sequence');
+    const serial = await this.selectedSerial({ checkConnection: false });
+    await this.requireAllowedForeground('screen input sequence', serial);
     const observation = await this.screenObservation(serial);
     const assertInBounds = (x: number, y: number): void => {
       validateCoordinate(x, 'coordinate');
@@ -605,12 +608,12 @@ export class AndroidDeviceService {
     }
     validateDuration(options.interActionDelayMs ?? 0, 'interActionDelayMs', 1_000);
     const before = options.verifyChange ? await this.captureUi() : null;
-    const beforePixelSha256 = options.verifyPixels === true ? await this.pixelDigest() : null;
-    await this.requireAllowedForeground('screen input sequence before action');
+    const beforePixelSha256 = options.verifyPixels === true ? await this.pixelDigest(serial) : null;
+    await this.requireAllowedForeground('screen input sequence before action', serial);
     await this.input.sequence(serial, options.actions, options.interActionDelayMs ?? 0);
     await this.stabilize(options.settleMs ?? (options.verifyChange ? STARTUP_WAIT_MS : 0));
     const after = options.verifyChange ? await this.captureUi() : null;
-    const afterPixelSha256 = options.verifyPixels === true ? await this.pixelDigest() : null;
+    const afterPixelSha256 = options.verifyPixels === true ? await this.pixelDigest(serial) : null;
     return { before, after, beforePixelSha256, afterPixelSha256 };
   }
 
@@ -622,8 +625,8 @@ export class AndroidDeviceService {
     verifyPixels = false,
     settleMs?: number,
   ): Promise<ActionObservation> {
-    const serial = await this.selectedSerial();
-    await this.requireAllowedForeground('screen long press');
+    const serial = await this.selectedSerial({ checkConnection: false });
+    await this.requireAllowedForeground('screen long press', serial);
     const observation = await this.screenObservation(serial);
     if (
       observation.display.width > 0 &&
@@ -638,12 +641,12 @@ export class AndroidDeviceService {
       );
     }
     const before = verifyChange ? await this.captureUi() : null;
-    const beforePixelSha256 = verifyPixels ? await this.pixelDigest() : null;
-    await this.requireAllowedForeground('screen long press before action');
+    const beforePixelSha256 = verifyPixels ? await this.pixelDigest(serial) : null;
+    await this.requireAllowedForeground('screen long press before action', serial);
     await this.input.longPress(serial, x, y, validateDuration(durationMs, 'durationMs', 30_000));
     await this.stabilize(settleMs ?? (verifyChange ? STARTUP_WAIT_MS : 0));
     const after = verifyChange ? await this.captureUi() : null;
-    const afterPixelSha256 = verifyPixels ? await this.pixelDigest() : null;
+    const afterPixelSha256 = verifyPixels ? await this.pixelDigest(serial) : null;
     return { before, after, beforePixelSha256, afterPixelSha256 };
   }
 
@@ -653,15 +656,15 @@ export class AndroidDeviceService {
     verifyPixels = false,
     settleMs?: number,
   ): Promise<ActionObservation> {
-    const serial = await this.selectedSerial();
-    await this.requireAllowedForeground('key press');
+    const serial = await this.selectedSerial({ checkConnection: false });
+    await this.requireAllowedForeground('key press', serial);
     const before = verifyChange ? await this.captureUi() : null;
-    const beforePixelSha256 = verifyPixels ? await this.pixelDigest() : null;
-    await this.requireAllowedForeground('key press before action');
+    const beforePixelSha256 = verifyPixels ? await this.pixelDigest(serial) : null;
+    await this.requireAllowedForeground('key press before action', serial);
     await this.input.key(serial, key);
     await this.stabilize(settleMs ?? (verifyChange ? STARTUP_WAIT_MS : 0));
     const after = verifyChange ? await this.captureUi() : null;
-    const afterPixelSha256 = verifyPixels ? await this.pixelDigest() : null;
+    const afterPixelSha256 = verifyPixels ? await this.pixelDigest(serial) : null;
     return { before, after, beforePixelSha256, afterPixelSha256 };
   }
 
