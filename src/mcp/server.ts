@@ -79,6 +79,36 @@ function verificationData(observation: ActionObservation): Record<string, unknow
   };
 }
 
+async function actionContent(
+  service: AndroidDeviceService,
+  serial: string,
+  observation: ActionObservation,
+  data: Record<string, unknown>,
+  includeScreenshot: boolean,
+) {
+  const screenshot = includeScreenshot ? await service.captureActionScreenshot(serial) : null;
+  const response = ok(
+    {
+      ...data,
+      ...verificationData(observation),
+      ...(screenshot === null
+        ? {}
+        : {
+            screenshot: {
+              width: screenshot.width,
+              height: screenshot.height,
+              sha256: screenshot.sha256,
+            },
+          }),
+    },
+    {
+      deviceSerial: serial,
+      warnings: observation.after?.warnings ?? observation.before?.warnings ?? [],
+    },
+  );
+  return screenshot === null ? jsonContent(response) : imageContent(response, screenshot.png);
+}
+
 function autoMirrorWarnings(service: AndroidDeviceService): Array<{
   code: string;
   message: string;
@@ -536,6 +566,7 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
     },
     async (args) => {
       try {
+        const serial = await service.selectedSerial({ checkConnection: false });
         const result = await service.tapCoordinates(
           args.x,
           args.y,
@@ -543,12 +574,7 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
           args.verify_pixels ?? false,
           args.settle_ms,
         );
-        return jsonContent(
-          ok(verificationData(result), {
-            deviceSerial: await service.selectedSerial({ checkConnection: false }),
-            warnings: result.after?.warnings ?? result.before?.warnings ?? [],
-          }),
-        );
+        return await actionContent(service, serial, result, {}, args.include_screenshot === true);
       } catch (error) {
         return toolError(error);
       }
@@ -565,6 +591,7 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
     },
     async (args) => {
       try {
+        const serial = await service.selectedSerial({ checkConnection: false });
         const options = {
           ...(args.start_x === undefined ? {} : { startX: args.start_x }),
           ...(args.start_y === undefined ? {} : { startY: args.start_y }),
@@ -577,12 +604,7 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
           ...(args.settle_ms === undefined ? {} : { settleMs: args.settle_ms }),
         };
         const result = await service.swipe(options);
-        return jsonContent(
-          ok(verificationData(result), {
-            deviceSerial: await service.selectedSerial({ checkConnection: false }),
-            warnings: result.after?.warnings ?? result.before?.warnings ?? [],
-          }),
-        );
+        return await actionContent(service, serial, result, {}, args.include_screenshot === true);
       } catch (error) {
         return toolError(error);
       }
@@ -622,14 +644,13 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
             : { interActionDelayMs: args.inter_action_delay_ms }),
           ...(args.settle_ms === undefined ? {} : { settleMs: args.settle_ms }),
         });
-        const response = ok(
-          { action_count: actions.length, ...verificationData(result) },
-          {
-            deviceSerial: serial,
-            warnings: result.after?.warnings ?? result.before?.warnings ?? [],
-          },
+        return await actionContent(
+          service,
+          serial,
+          result,
+          { action_count: actions.length },
+          args.include_screenshot === true,
         );
-        return jsonContent(response);
       } catch (error) {
         return toolError(error);
       }
@@ -658,19 +679,12 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
           args.verify_pixels ?? false,
           args.settle_ms,
         );
-        return jsonContent(
-          ok(
-            {
-              x: args.x,
-              y: args.y,
-              duration_ms: args.duration_ms ?? 750,
-              ...verificationData(result),
-            },
-            {
-              deviceSerial: serial,
-              warnings: result.after?.warnings ?? result.before?.warnings ?? [],
-            },
-          ),
+        return await actionContent(
+          service,
+          serial,
+          result,
+          { x: args.x, y: args.y, duration_ms: args.duration_ms ?? 750 },
+          args.include_screenshot === true,
         );
       } catch (error) {
         return toolError(error);
@@ -695,14 +709,12 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
           args.verify_pixels ?? false,
           args.settle_ms,
         );
-        return jsonContent(
-          ok(
-            { key: args.key, ...verificationData(result) },
-            {
-              deviceSerial: serial,
-              warnings: result.after?.warnings ?? result.before?.warnings ?? [],
-            },
-          ),
+        return await actionContent(
+          service,
+          serial,
+          result,
+          { key: args.key },
+          args.include_screenshot === true,
         );
       } catch (error) {
         return toolError(error);

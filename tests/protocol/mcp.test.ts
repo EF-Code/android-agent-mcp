@@ -98,6 +98,27 @@ test('returns image content and structured errors over MCP stdio', async () => {
     const companion = content.find((item) => item.type === 'text');
     assert.ok(companion?.text?.includes('"width": 1080'));
 
+    const fastTap = await client.callTool({
+      name: 'screen_tap',
+      arguments: { x: 10, y: 20, include_screenshot: true },
+    });
+    assert.notEqual(fastTap.isError, true);
+    const fastTapContent = fastTap.content as Array<{ type: string; mimeType?: string }>;
+    assert.ok(
+      fastTapContent.some((item) => item.type === 'image' && item.mimeType === 'image/png'),
+    );
+
+    const sequence = await client.callTool({
+      name: 'screen_input_sequence',
+      arguments: {
+        actions: [
+          { type: 'tap', x: 10, y: 20 },
+          { type: 'tap', x: 30, y: 40 },
+        ],
+      },
+    });
+    assert.notEqual(sequence.isError, true);
+
     const invalidResult = await client.callTool({
       name: 'screen_capture',
       arguments: { save_to_evidence: 'yes' },

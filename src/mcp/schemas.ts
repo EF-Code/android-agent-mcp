@@ -149,6 +149,7 @@ export const keyPressSchema = {
   verify_change: z.boolean().optional(),
   verify_pixels: z.boolean().optional(),
   settle_ms: z.number().int().min(0).max(2_000).optional(),
+  include_screenshot: z.boolean().optional(),
 };
 
 export const textTypeSchema = {
