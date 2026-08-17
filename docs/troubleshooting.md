@@ -30,7 +30,7 @@ Check that the device is authorized and unlocked. UIAutomator may be empty or in
 
 ## Actions feel slow
 
-For visual apps, games, and custom canvases, avoid calling `ui_dump`, `ui_find`, or `wait_for_ui` between every input. Capture the screen once, use native device-pixel coordinates, and call `screen_tap`/`screen_swipe` with `verify_change: false` and `verify_pixels: false`. Batch related taps, swipes, and keys with `screen_input_sequence`; set `include_screenshot: true` only when the next decision needs a new image. Use `duration_ms: 100` for a short drag when the app accepts it. Semantic `ui_tap` remains intentionally slower because it resolves and verifies the accessibility hierarchy.
+For visual apps, games, and custom canvases, avoid calling `ui_dump`, `ui_find`, `screen_capture`, or `wait_for_ui` between every input. Start one `visual_control_start` session, then use `visual_control_action` with normalized `0-999` coordinates; each action returns the next screenshot in the same response. Set `wait_for_change_ms` only when the app needs a bounded transition wait. Use `screen_input_sequence` for one-off native-pixel batches. Semantic `ui_tap` remains intentionally slower because it resolves and verifies the accessibility hierarchy.
 
 ## `scrcpy` is missing or does not open
 

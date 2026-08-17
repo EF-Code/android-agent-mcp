@@ -9,7 +9,7 @@ import { AdbLogcat, type LogCaptureOptions } from './adb/logcat.js';
 import { AdbPackages } from './adb/packages.js';
 import { AdbPermissions } from './adb/permissions.js';
 import { AdbProperties } from './adb/properties.js';
-import { AdbScreenshots } from './adb/screenshots.js';
+import { AdbScreenshots, type Screenshot } from './adb/screenshots.js';
 import { AdbUiAutomator } from './adb/ui-automator.js';
 import { EvidenceManager, type EvidenceSession } from './evidence/recorder.js';
 import { Policy } from './policy/policy.js';
@@ -22,6 +22,7 @@ import { parseUiAutomatorXml } from './ui/parse.js';
 import { SnapshotStore } from './ui/snapshots.js';
 import { findMatches, resolveUniqueMatch } from './ui/selectors.js';
 import type { UiSelector, UiSnapshot } from './ui/types.js';
+import { mapVisualInputActions, type VisualCoordinateSpace } from './visual-control.js';
 import {
   validateCoordinate,
   validateDuration,
@@ -76,6 +77,37 @@ export interface ActionObservation {
   afterPixelSha256: string | null;
 }
 
+export interface VisualControlFrame {
+  screenshot: Screenshot;
+  foreground: ForegroundApp;
+}
+
+export interface VisualControlStartResult extends VisualControlFrame {
+  sessionId: string;
+  serial: string;
+  coordinateSpace: VisualCoordinateSpace;
+  startedAt: string;
+}
+
+export interface VisualControlActionResult extends VisualControlFrame {
+  sessionId: string;
+  serial: string;
+  coordinateSpace: VisualCoordinateSpace;
+  actionCount: number;
+  changed: boolean;
+  waitElapsedMs: number;
+  elapsedMs: number;
+}
+
+interface VisualControlSessionState {
+  sessionId: string;
+  serial: string;
+  deviceSessionId: string;
+  coordinateSpace: VisualCoordinateSpace;
+  lastScreenshotSha256: string;
+  startedAt: string;
+}
+
 export class AndroidDeviceService {
   readonly adb: AdbClient;
   readonly devices: DeviceManager;
@@ -97,6 +129,7 @@ export class AndroidDeviceService {
     string,
     { sessionId: string; capturedAt: number; width: number; height: number }
   >();
+  private readonly visualControlSessions = new Map<string, VisualControlSessionState>();
   private autoMirrorError: AppError | null = null;
   private autoMirrorAttemptedSessionId: string | null = null;
 
@@ -135,6 +168,7 @@ export class AndroidDeviceService {
 
   async close(): Promise<void> {
     for (const controller of this.activeLogControllers) controller.abort();
+    this.visualControlSessions.clear();
     try {
       await this.scrcpy.dispose();
     } finally {
@@ -145,6 +179,9 @@ export class AndroidDeviceService {
   private handleDisconnect(serial: string): void {
     this.snapshots.invalidate();
     this.displayGeometryCache.delete(serial);
+    for (const [sessionId, session] of this.visualControlSessions) {
+      if (session.serial === serial) this.visualControlSessions.delete(sessionId);
+    }
     this.scrcpy.markDetached(serial);
     this.autoMirrorAttemptedSessionId = null;
     for (const controller of this.activeLogControllers) controller.abort();
@@ -166,6 +203,7 @@ export class AndroidDeviceService {
   async selectDevice(serial: string): Promise<Awaited<ReturnType<DeviceManager['select']>>> {
     const result = await this.devices.select(serial);
     this.displayGeometryCache.delete(serial);
+    this.visualControlSessions.clear();
     await this.ensureAutoMirror();
     return result;
   }
@@ -373,6 +411,210 @@ export class AndroidDeviceService {
     ]);
     const foreground = await this.requireCaptureForeground('screen capture result', serial);
     return { screenshot, rotation, foreground };
+  }
+
+  private async captureVisualFrame(serial: string, operation: string): Promise<VisualControlFrame> {
+    await this.requireCaptureForeground(`${operation} before capture`, serial);
+    const screenshot = await this.screenshots.capture(serial);
+    const foreground = await this.requireCaptureForeground(`${operation} after capture`, serial);
+    return { screenshot, foreground };
+  }
+
+  private async requireVisualControlSession(
+    sessionId: string,
+  ): Promise<{ state: VisualControlSessionState; serial: string }> {
+    const state = this.visualControlSessions.get(sessionId);
+    if (state === undefined) {
+      throw new AppError(
+        ErrorCode.SessionConflict,
+        'Visual control session is unknown or expired; start a new session.',
+        { retryable: true, details: { sessionId } },
+      );
+    }
+    const selected = await this.devices.requireSelected({ checkConnection: false });
+    if (selected.sessionId !== state.deviceSessionId || selected.serial !== state.serial) {
+      this.visualControlSessions.delete(sessionId);
+      throw new AppError(
+        ErrorCode.SessionConflict,
+        'Visual control session is bound to a different device session; start a new session.',
+        {
+          retryable: true,
+          details: {
+            sessionId,
+            sessionSerial: state.serial,
+            selectedSerial: selected.serial,
+          },
+        },
+      );
+    }
+    return { state, serial: state.serial };
+  }
+
+  private async waitForVisualChange(
+    serial: string,
+    baselineSha256: string,
+    waitForChangeMs: number,
+    stableMs: number,
+    pollMs: number,
+  ): Promise<{ screenshot: Screenshot; changed: boolean; elapsedMs: number }> {
+    const started = performance.now();
+    let screenshot = await this.screenshots.capture(serial);
+    let changed = screenshot.sha256 !== baselineSha256;
+    if (waitForChangeMs === 0 || (!changed && performance.now() - started >= waitForChangeMs)) {
+      return {
+        screenshot,
+        changed,
+        elapsedMs: Math.round(performance.now() - started),
+      };
+    }
+
+    while (!changed && performance.now() - started < waitForChangeMs) {
+      await new Promise((resolve) => setTimeout(resolve, pollMs));
+      screenshot = await this.screenshots.capture(serial);
+      changed = screenshot.sha256 !== baselineSha256;
+    }
+    if (!changed || stableMs === 0) {
+      return {
+        screenshot,
+        changed,
+        elapsedMs: Math.round(performance.now() - started),
+      };
+    }
+
+    let stableSince = performance.now();
+    while (performance.now() - started < waitForChangeMs) {
+      if (performance.now() - stableSince >= stableMs) break;
+      await new Promise((resolve) => setTimeout(resolve, pollMs));
+      const next = await this.screenshots.capture(serial);
+      if (next.sha256 !== screenshot.sha256) {
+        screenshot = next;
+        stableSince = performance.now();
+      }
+    }
+    return {
+      screenshot,
+      changed,
+      elapsedMs: Math.round(performance.now() - started),
+    };
+  }
+
+  async visualControlStart(
+    coordinateSpace: VisualCoordinateSpace = 'normalized_1000',
+  ): Promise<VisualControlStartResult> {
+    const serial = await this.selectedSerial();
+    const selected = await this.devices.requireSelected({ checkConnection: false });
+    const existing = [...this.visualControlSessions.values()].find(
+      (session) => session.serial === serial,
+    );
+    if (existing !== undefined) {
+      throw new AppError(
+        ErrorCode.SessionConflict,
+        'A visual control session is already active for the selected device.',
+        {
+          retryable: true,
+          details: { sessionId: existing.sessionId, serial },
+        },
+      );
+    }
+    const frame = await this.captureVisualFrame(serial, 'visual control start');
+    const sessionId = randomUUID();
+    const startedAt = new Date().toISOString();
+    this.visualControlSessions.set(sessionId, {
+      sessionId,
+      serial,
+      deviceSessionId: selected.sessionId,
+      coordinateSpace,
+      lastScreenshotSha256: frame.screenshot.sha256,
+      startedAt,
+    });
+    return { sessionId, serial, coordinateSpace, startedAt, ...frame };
+  }
+
+  async visualControlAction(options: {
+    sessionId: string;
+    actions: readonly InputSequenceAction[];
+    coordinateSpace?: VisualCoordinateSpace;
+    interActionDelayMs?: number;
+    settleMs?: number;
+    waitForChangeMs?: number;
+    stableMs?: number;
+    pollMs?: number;
+  }): Promise<VisualControlActionResult> {
+    const started = performance.now();
+    const { state, serial } = await this.requireVisualControlSession(options.sessionId);
+    const coordinateSpace = options.coordinateSpace ?? state.coordinateSpace;
+    const [, geometry] = await Promise.all([
+      this.requireAllowedForeground('visual control action', serial),
+      this.screenGeometry(serial),
+    ]);
+    const actions = mapVisualInputActions(
+      options.actions,
+      coordinateSpace,
+      geometry.width,
+      geometry.height,
+    );
+    const assertInBounds = (x: number, y: number): void => {
+      if (geometry.width > 0 && (x >= geometry.width || y >= geometry.height)) {
+        throw new AppError(
+          ErrorCode.InvalidCoordinates,
+          'Visual control coordinates are outside the native device display bounds.',
+          { details: { x, y, display: geometry, coordinateSpace } },
+        );
+      }
+    };
+    for (const action of actions) {
+      if (action.type === 'tap') assertInBounds(action.x, action.y);
+      if (action.type === 'swipe') {
+        assertInBounds(action.startX, action.startY);
+        assertInBounds(action.endX, action.endY);
+      }
+    }
+    const settleMs = options.settleMs ?? 0;
+    const waitForChangeMs = options.waitForChangeMs ?? 0;
+    const stableMs = options.stableMs ?? 0;
+    const pollMs = options.pollMs ?? 100;
+    validateDuration(settleMs, 'settleMs', 2_000);
+    validateDuration(waitForChangeMs, 'waitForChangeMs', 15_000);
+    validateDuration(stableMs, 'stableMs', 2_000);
+    validateDuration(pollMs, 'pollMs', 1_000);
+    if (pollMs < 50) {
+      throw new AppError(ErrorCode.InvalidInput, 'pollMs must be at least 50 milliseconds.', {
+        details: { pollMs },
+      });
+    }
+    await this.input.sequence(serial, actions, options.interActionDelayMs ?? 0);
+    await this.stabilize(settleMs);
+    const waited = await this.waitForVisualChange(
+      serial,
+      state.lastScreenshotSha256,
+      waitForChangeMs,
+      stableMs,
+      pollMs,
+    );
+    const foreground = await this.requireCaptureForeground('visual control observation', serial);
+    state.lastScreenshotSha256 = waited.screenshot.sha256;
+    return {
+      sessionId: options.sessionId,
+      serial,
+      coordinateSpace,
+      actionCount: actions.length,
+      changed: waited.changed,
+      waitElapsedMs: waited.elapsedMs,
+      elapsedMs: Math.round(performance.now() - started),
+      screenshot: waited.screenshot,
+      foreground,
+    };
+  }
+
+  visualControlStop(sessionId: string): { sessionId: string; stopped: true } {
+    if (!this.visualControlSessions.delete(sessionId)) {
+      throw new AppError(
+        ErrorCode.SessionConflict,
+        'Visual control session is unknown or already stopped.',
+        { retryable: true, details: { sessionId } },
+      );
+    }
+    return { sessionId, stopped: true };
   }
 
   async requireFreshSnapshot(snapshotId: string): Promise<UiSnapshot> {
@@ -773,7 +1015,7 @@ export class AndroidDeviceService {
   ): Promise<EvidenceSession> {
     const device = await this.deviceInfo();
     const manifest = {
-      serverVersion: '0.3.0',
+      serverVersion: '0.4.0',
       adbVersion: await this.adb.version(),
       scrcpyVersion: this.scrcpy.status().capabilities?.version ?? null,
       device,

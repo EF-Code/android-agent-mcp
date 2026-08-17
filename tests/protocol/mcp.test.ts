@@ -31,7 +31,7 @@ test('MCP stdio server initializes with instructions and exposes stable tools', 
     await client.connect(transport);
     serverPid = transport.pid;
     assert.ok(serverPid !== null);
-    assert.deepEqual(client.getServerVersion(), { name: 'android-device', version: '0.3.0' });
+    assert.deepEqual(client.getServerVersion(), { name: 'android-device', version: '0.4.0' });
     const instructions = client.getInstructions();
     assert.ok(instructions?.startsWith('Select exactly one authorized Android device'));
     assert.ok(instructions !== undefined && instructions.length <= 512);
@@ -118,6 +118,102 @@ test('returns image content and structured errors over MCP stdio', async () => {
       },
     });
     assert.notEqual(sequence.isError, true);
+
+    const visualStart = await client.callTool({
+      name: 'visual_control_start',
+      arguments: {},
+    });
+    assert.notEqual(visualStart.isError, true);
+    const visualStartContent = visualStart.content as Array<{
+      type: string;
+      mimeType?: string;
+      text?: string;
+    }>;
+    assert.ok(
+      visualStartContent.some((item) => item.type === 'image' && item.mimeType === 'image/png'),
+    );
+    const visualStartText = visualStartContent.find((item) => item.type === 'text')?.text ?? '';
+    const visualStartData = JSON.parse(visualStartText) as {
+      data: { session_id: string; coordinate_space: string };
+    };
+    assert.equal(visualStartData.data.coordinate_space, 'normalized_1000');
+
+    const duplicateVisualStart = await client.callTool({
+      name: 'visual_control_start',
+      arguments: {},
+    });
+    assert.equal(duplicateVisualStart.isError, true);
+
+    const visualAction = await client.callTool({
+      name: 'visual_control_action',
+      arguments: {
+        session_id: visualStartData.data.session_id,
+        actions: [
+          { type: 'tap', x: 100, y: 200 },
+          { type: 'tap', x: 300, y: 200 },
+        ],
+      },
+    });
+    assert.notEqual(visualAction.isError, true);
+    const visualActionContent = visualAction.content as Array<{
+      type: string;
+      mimeType?: string;
+      text?: string;
+    }>;
+    assert.ok(
+      visualActionContent.some((item) => item.type === 'image' && item.mimeType === 'image/png'),
+    );
+    const visualActionText = visualActionContent.find((item) => item.type === 'text')?.text ?? '';
+    const visualActionData = JSON.parse(visualActionText) as {
+      data: {
+        action_count: number;
+        changed: boolean;
+        elapsed_ms: number;
+        wait_elapsed_ms: number;
+      };
+    };
+    assert.equal(visualActionData.data.action_count, 2);
+    assert.equal(visualActionData.data.changed, false);
+    assert.equal(typeof visualActionData.data.elapsed_ms, 'number');
+    assert.equal(typeof visualActionData.data.wait_elapsed_ms, 'number');
+
+    const invalidVisualAction = await client.callTool({
+      name: 'visual_control_action',
+      arguments: {
+        session_id: visualStartData.data.session_id,
+        actions: [{ type: 'tap', x: 1_000, y: 200 }],
+      },
+    });
+    assert.equal(invalidVisualAction.isError, true);
+
+    const visualStop = await client.callTool({
+      name: 'visual_control_stop',
+      arguments: { session_id: visualStartData.data.session_id },
+    });
+    assert.equal(visualStop.isError, false);
+
+    const staleVisualStart = await client.callTool({
+      name: 'visual_control_start',
+      arguments: {},
+    });
+    const staleVisualText =
+      (staleVisualStart.content as Array<{ type: string; text?: string }>).find(
+        (item) => item.type === 'text',
+      )?.text ?? '';
+    const staleVisualSession = JSON.parse(staleVisualText) as { data: { session_id: string } };
+    const reselection = await client.callTool({
+      name: 'device_select',
+      arguments: { serial: 'protocol-test' },
+    });
+    assert.equal(reselection.isError, false);
+    const staleVisualAction = await client.callTool({
+      name: 'visual_control_action',
+      arguments: {
+        session_id: staleVisualSession.data.session_id,
+        actions: [{ type: 'tap', x: 100, y: 200 }],
+      },
+    });
+    assert.equal(staleVisualAction.isError, true);
 
     const invalidResult = await client.callTool({
       name: 'screen_capture',

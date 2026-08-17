@@ -174,6 +174,33 @@ export const TOOL_METADATA = {
       openWorldHint: true,
     },
   },
+  visual_control_start: {
+    risk: 'interactive',
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+  },
+  visual_control_action: {
+    risk: 'interactive',
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+  },
+  visual_control_stop: {
+    risk: 'interactive',
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
   screen_long_press: {
     risk: 'interactive',
     annotations: {

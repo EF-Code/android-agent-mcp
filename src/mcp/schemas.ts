@@ -120,6 +120,27 @@ const inputSequenceActionSchema = z.discriminatedUnion('type', [
   }),
 ]);
 
+const visualCoordinateSpaceSchema = z.enum(['device_pixels', 'normalized_1000']);
+
+export const visualControlStartSchema = {
+  coordinate_space: visualCoordinateSpaceSchema.optional(),
+};
+
+export const visualControlActionSchema = {
+  session_id: z.string().uuid(),
+  actions: z.array(inputSequenceActionSchema).min(1).max(32),
+  coordinate_space: visualCoordinateSpaceSchema.optional(),
+  inter_action_delay_ms: z.number().int().min(0).max(1_000).optional(),
+  settle_ms: z.number().int().min(0).max(2_000).optional(),
+  wait_for_change_ms: z.number().int().min(0).max(15_000).optional(),
+  stable_ms: z.number().int().min(0).max(2_000).optional(),
+  poll_ms: z.number().int().min(50).max(1_000).optional(),
+};
+
+export const visualControlStopSchema = {
+  session_id: z.string().uuid(),
+};
+
 export const inputSequenceSchema = {
   actions: z.array(inputSequenceActionSchema).min(1).max(32),
   inter_action_delay_ms: z.number().int().min(0).max(1_000).optional(),
