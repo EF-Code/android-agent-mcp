@@ -12,7 +12,7 @@ Implemented and locally verified:
 - Automated unit, integration, protocol, and scrcpy tests, plus a separate opt-in physical-device smoke test
 - ADB/scrcpy adapters with injectable command runners
 - Device discovery, explicit selection, screenshots, UIAutomator parsing, semantic selectors, input, app inspection, logcat, scrcpy ownership, and evidence sessions
-- Low-latency native input sequences, cached display geometry, concurrent action preflight, and optional post-action screenshots
+- Low-latency native input sequences, cached display geometry, concurrent action preflight, optional post-action screenshots, and stateful visual action-observation sessions
 - Path-restricted APK installation and approval-gated mutations
 
 Physical-device validation is opt-in and remains a separate gate. The full MCP stdio path has been validated on an authorized Samsung SM-A075F: discovery, selection, device information, visible scrcpy, app launch, screenshot image content, UI dump/find/tap, bounded logcat, evidence completion, and owned-mirror shutdown.
@@ -168,28 +168,28 @@ The default `allowedPackages` policy is `*`, so the agent does not require manua
 2. Call `device_select` when selection is not unambiguous.
 3. Call `device_info` and confirm the target.
 4. For semantic controls, use `ui_dump`/`ui_find` followed by `ui_tap`.
-5. For games, canvases, video, and other visual surfaces, capture once, calculate native device-pixel coordinates, and use `screen_tap` or `screen_swipe` with `verify_change: false` and `verify_pixels: false`.
-6. Batch related native actions in one `screen_input_sequence` call. Set `include_screenshot: true` when the next model decision needs a fresh image; otherwise the action response stays JSON-only.
+5. For games, canvases, video, and other visual surfaces, start one `visual_control_start` session. It returns the initial frame and defaults to Google-style normalized `0-999` coordinates.
+6. Use `visual_control_action` for every visual step. It batches taps/swipes, executes them without UI hierarchy verification, and returns the next screenshot in the same response. Do not call `screen_capture` between visual actions. Use `wait_for_change_ms` only when the app needs a bounded transition wait.
 7. General packages are available by default; honor configured sensitive-package blocks.
 8. Mutating tools remain fail-closed unless the host explicitly uses `approvalMode: "allow"`; keep Codex write approval enabled as an additional client control.
 9. Selecting a device makes one best-effort attempt to start the visible scrcpy mirror unless `mirror.autoStart` is disabled. A scrcpy failure is returned as a warning and never blocks ADB tools. After `mirror_stop`, use `mirror_start` to reopen it explicitly.
 10. Use `evidence_begin`, explicitly capture the desired artifacts, then `evidence_finish`.
 
-For a two-tap visual move, prefer one call rather than two model round trips:
+For a two-tap visual move inside a session, prefer one call rather than two model round trips:
 
 ```json
 {
+  "session_id": "session-id-from-visual_control_start",
   "actions": [
-    { "type": "tap", "x": 405, "y": 720 },
-    { "type": "tap", "x": 495, "y": 720 }
+    { "type": "tap", "x": 375, "y": 700 },
+    { "type": "tap", "x": 458, "y": 700 }
   ],
-  "verify_change": false,
-  "verify_pixels": false,
-  "include_screenshot": true
+  "coordinate_space": "normalized_1000",
+  "wait_for_change_ms": 1500
 }
 ```
 
-The sequence tool accepts taps, swipes, and allowlisted non-sensitive keys. Coordinates are native device pixels; calibrate them from a recent screenshot instead of assuming a fixed board or phone layout.
+The visual session accepts taps, swipes, and allowlisted non-sensitive keys. It returns an image plus a compact JSON observation after every action. Stop it with `visual_control_stop` when finished. Use `screen_input_sequence` for one-off native-pixel batches when a persistent visual loop is unnecessary.
 
 If the selected phone disconnects or becomes unauthorized, the server invalidates retained UI state and requires an explicit `device_select` again after reconnecting, even when the serial is unchanged.
 
@@ -225,7 +225,7 @@ The physical harness remains deliberately explicit: it requires a designated tes
 
 Read-only tools include `device_list`, `device_info`, `mirror_status`, `screen_capture`, `ui_dump`, `ui_find`, `app_list`, `app_info`, `permissions_list`, `logcat_capture`, and `logcat_crashes`.
 
-Interactive tools include `device_select`, `mirror_start`, `mirror_stop`, `ui_tap`, `screen_tap`, `screen_swipe`, `screen_input_sequence`, `screen_long_press`, `key_press`, `text_type`, `app_launch`, `app_stop`, and `wait_for_ui`.
+Interactive tools include `device_select`, `mirror_start`, `mirror_stop`, `ui_tap`, `visual_control_start`, `visual_control_action`, `visual_control_stop`, `screen_tap`, `screen_swipe`, `screen_input_sequence`, `screen_long_press`, `key_press`, `text_type`, `app_launch`, `app_stop`, and `wait_for_ui`.
 
 Approval-required tools include `app_install`, `app_clear_data`, and `permissions_set`. Evidence tools are local artifact operations with bounded storage and redaction.
 
@@ -239,6 +239,7 @@ Approval-required tools include `app_install`, `app_clear_data`, and `permission
 - Logcat duration captures are bounded live reads; `since` selects a bounded timestamp dump.
 - Direct native input defaults to no UI/pixel verification for low latency; request `verify_change: true` when the action must be checked by the server.
 - Display geometry is cached for `displayGeometryMaxAgeMs`; the cache is invalidated when the selected device disconnects or is reselected.
+- Visual control sessions bind to one selected device session, return one screenshot per action, and expire on disconnect or explicit stop.
 - No wireless pairing, multiple-device parallel control, OCR, continuous video MCP frames, root features, iOS, or remote listener is provided.
 
 See [SECURITY.md](SECURITY.md) and the documents under [docs/](docs/) for operational details.
