@@ -1,6 +1,6 @@
 {
   "name": "android-agent-mcp",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A local MCP server for observable, policy-controlled Android device operation.",
   "type": "module",
   "license": "MIT",

@@ -977,7 +977,7 @@ export function createMcpServer(config: ServerConfig = loadConfig()): {
 } {
   const service = new AndroidDeviceService(config);
   const server = new McpServer(
-    { name: 'android-device', version: '0.2.0' },
+    { name: 'android-device', version: '0.3.0' },
     { instructions: SERVER_INSTRUCTIONS },
   );
   registerReadOnlyTools(server, service);
