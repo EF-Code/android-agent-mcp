@@ -126,6 +126,17 @@ test(
         ),
       );
 
+      const visualSession = dataFrom(
+        await client.callTool({ name: 'visual_control_start', arguments: {} }),
+      ) as { session_id: string; coordinate_space: string };
+      assert.equal(visualSession.coordinate_space, 'normalized_1000');
+      dataFrom(
+        await client.callTool({
+          name: 'visual_control_stop',
+          arguments: { session_id: visualSession.session_id },
+        }),
+      );
+
       const snapshot = dataFrom(await client.callTool({ name: 'ui_dump', arguments: {} })) as {
         snapshotId: string;
       };
