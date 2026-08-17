@@ -5,6 +5,7 @@ import { AdbClient, type CommandRunner } from '../../src/adb/client.js';
 import { AdbInput, buildInputSequenceScript } from '../../src/adb/input.js';
 import { AdbLogcat } from '../../src/adb/logcat.js';
 import { AdbPackages } from '../../src/adb/packages.js';
+import { AdbProperties } from '../../src/adb/properties.js';
 import { AdbScreenshots } from '../../src/adb/screenshots.js';
 import { AdbUiAutomator } from '../../src/adb/ui-automator.js';
 import { parseForegroundActivity } from '../../src/adb/foreground.js';
@@ -52,6 +53,7 @@ class RecordingRunner implements CommandRunner {
   ): Promise<CommandOutput> {
     this.calls.push({ executable, args: [...args], options });
     if (args.includes('screencap')) return output(png());
+    if (args.includes('wm') && args.includes('size')) return output('Physical size: 1080x2400\n');
     if (args.includes('uiautomator'))
       return output('UI hier dumped to: /sdcard/android_agent_mcp_ui.xml');
     if (args.includes('exec-out') && args.includes('cat'))
@@ -104,10 +106,7 @@ test('batches safe input actions into one generated remote script', async () => 
     '-c',
     'input tap 10 20; sleep 0.050; input swipe 10 20 30 40 100; sleep 0.050; input keyevent 4',
   ]);
-  assert.equal(
-    buildInputSequenceScript([{ type: 'tap', x: 1, y: 2 }]),
-    'input tap 1 2',
-  );
+  assert.equal(buildInputSequenceScript([{ type: 'tap', x: 1, y: 2 }]), 'input tap 1 2');
 });
 
 test('uses direct ADB argument arrays for screenshots and UIAutomator', async () => {
@@ -137,6 +136,21 @@ test('uses direct ADB argument arrays for screenshots and UIAutomator', async ()
       ['-s', 'serial-2', 'shell', 'rm', '-f', '/sdcard/android_agent_mcp_ui.xml'],
     ],
   );
+});
+
+test('reads only native resolution when an input action needs coordinate bounds', async () => {
+  const runner = new RecordingRunner();
+  const adb = new AdbClient({
+    adbPath: 'adb',
+    defaultTimeoutMs: 5_000,
+    maxOutputBytes: 100_000,
+    runner,
+  });
+  assert.deepEqual(await new AdbProperties(adb).resolution('serial-2'), {
+    width: 1080,
+    height: 2400,
+  });
+  assert.deepEqual(runner.calls[0]?.args, ['-s', 'serial-2', 'shell', 'wm', 'size']);
 });
 
 test('uses bounded live logcat arguments and does not interpolate shell text', async () => {
