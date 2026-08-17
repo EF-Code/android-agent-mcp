@@ -212,10 +212,8 @@ function registerReadOnlyTools(server: McpServer, service: AndroidDeviceService)
     async (args) => {
       try {
         const serial = await service.selectedSerial();
-        await service.requireCaptureForeground('screen capture');
-        const screenshot = await service.screenshots.capture(serial);
-        const observation = await service.screenObservation(serial);
-        await service.requireCaptureForeground('screen capture result');
+        const capture = await service.captureScreen(serial);
+        const { screenshot } = capture;
         let evidenceDigest: unknown = null;
         if (args.save_to_evidence === true) {
           const session = service.evidence.requireActive();
@@ -225,8 +223,8 @@ function registerReadOnlyTools(server: McpServer, service: AndroidDeviceService)
           {
             width: screenshot.width,
             height: screenshot.height,
-            rotation: observation.display.rotation,
-            foreground: observation.foreground,
+            rotation: capture.rotation,
+            foreground: capture.foreground,
             sha256: screenshot.sha256,
             evidence: evidenceDigest,
           },

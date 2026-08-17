@@ -361,6 +361,20 @@ export class AndroidDeviceService {
     return this.screenshots.capture(serial);
   }
 
+  async captureScreen(serial: string): Promise<{
+    screenshot: Awaited<ReturnType<AdbScreenshots['capture']>>;
+    rotation: 0 | 1 | 2 | 3;
+    foreground: ForegroundApp;
+  }> {
+    await this.requireCaptureForeground('screen capture', serial);
+    const [screenshot, rotation] = await Promise.all([
+      this.screenshots.capture(serial),
+      this.properties.rotation(serial),
+    ]);
+    const foreground = await this.requireCaptureForeground('screen capture result', serial);
+    return { screenshot, rotation, foreground };
+  }
+
   async requireFreshSnapshot(snapshotId: string): Promise<UiSnapshot> {
     const session = await this.devices.requireSelected();
     return this.snapshots.requireFresh(snapshotId, {
