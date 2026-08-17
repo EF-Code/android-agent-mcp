@@ -31,7 +31,7 @@ test('MCP stdio server initializes with instructions and exposes stable tools', 
     await client.connect(transport);
     serverPid = transport.pid;
     assert.ok(serverPid !== null);
-    assert.deepEqual(client.getServerVersion(), { name: 'android-device', version: '0.3.0' });
+    assert.deepEqual(client.getServerVersion(), { name: 'android-device', version: '0.4.0' });
     const instructions = client.getInstructions();
     assert.ok(instructions?.startsWith('Select exactly one authorized Android device'));
     assert.ok(instructions !== undefined && instructions.length <= 512);
