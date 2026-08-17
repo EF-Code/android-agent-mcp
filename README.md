@@ -12,6 +12,7 @@ Implemented and locally verified:
 - Automated unit, integration, protocol, and scrcpy tests, plus a separate opt-in physical-device smoke test
 - ADB/scrcpy adapters with injectable command runners
 - Device discovery, explicit selection, screenshots, UIAutomator parsing, semantic selectors, input, app inspection, logcat, scrcpy ownership, and evidence sessions
+- Low-latency native input sequences, cached display geometry, concurrent action preflight, and optional post-action screenshots
 - Path-restricted APK installation and approval-gated mutations
 
 Physical-device validation is opt-in and remains a separate gate. The full MCP stdio path has been validated on an authorized Samsung SM-A075F: discovery, selection, device information, visible scrcpy, app launch, screenshot image content, UI dump/find/tap, bounded logcat, evidence completion, and owned-mirror shutdown.
@@ -79,13 +80,13 @@ node /absolute/path/to/android-agent-mcp/dist/index.js
 The easiest path for a published release is:
 
 ```zsh
-npx -y android-agent-mcp@0.2.0 setup
+npx -y android-agent-mcp@0.3.0 setup
 ```
 
 This downloads the package, detects supported hosts, and configures only the hosts whose commands are available. No repository checkout is required. For a reusable global installation:
 
 ```zsh
-npm install --global android-agent-mcp@0.2.0
+npm install --global android-agent-mcp@0.3.0
 android-agent-mcp setup
 ```
 
@@ -96,7 +97,7 @@ Alternatively, let an MCP client download a pinned release when it starts the se
 ```json
 {
   "command": "npx",
-  "args": ["--yes", "android-agent-mcp@0.2.0"]
+  "args": ["--yes", "android-agent-mcp@0.3.0"]
 }
 ```
 
@@ -146,6 +147,7 @@ Example:
   "evidenceRetentionMaxAgeMs": 604800000,
   "defaultTimeoutMs": 15000,
   "uiSnapshotMaxAgeMs": 3000,
+  "displayGeometryMaxAgeMs": 10000,
   "approvalMode": "prompt",
   "mirror": {
     "autoStart": true,
@@ -165,12 +167,29 @@ The default `allowedPackages` policy is `*`, so the agent does not require manua
 1. Call `device_list`.
 2. Call `device_select` when selection is not unambiguous.
 3. Call `device_info` and confirm the target.
-4. Use `ui_dump`/`ui_find` before coordinate tools.
-5. For each action, observe, act, wait briefly, observe again, and report uncertainty.
-6. General valid packages are available by default; honor configured sensitive-package blocks.
-7. Mutating tools remain fail-closed unless the host explicitly uses `approvalMode: "allow"`; keep Codex write approval enabled as an additional client control.
-8. Selecting a device makes one best-effort attempt to start the visible scrcpy mirror unless `mirror.autoStart` is disabled. A scrcpy failure is returned as a warning and never blocks ADB tools. After `mirror_stop`, use `mirror_start` to reopen it explicitly.
-9. Use `evidence_begin`, explicitly capture the desired artifacts, then `evidence_finish`.
+4. For semantic controls, use `ui_dump`/`ui_find` followed by `ui_tap`.
+5. For games, canvases, video, and other visual surfaces, capture once, calculate native device-pixel coordinates, and use `screen_tap` or `screen_swipe` with `verify_change: false` and `verify_pixels: false`.
+6. Batch related native actions in one `screen_input_sequence` call. Set `include_screenshot: true` when the next model decision needs a fresh image; otherwise the action response stays JSON-only.
+7. General packages are available by default; honor configured sensitive-package blocks.
+8. Mutating tools remain fail-closed unless the host explicitly uses `approvalMode: "allow"`; keep Codex write approval enabled as an additional client control.
+9. Selecting a device makes one best-effort attempt to start the visible scrcpy mirror unless `mirror.autoStart` is disabled. A scrcpy failure is returned as a warning and never blocks ADB tools. After `mirror_stop`, use `mirror_start` to reopen it explicitly.
+10. Use `evidence_begin`, explicitly capture the desired artifacts, then `evidence_finish`.
+
+For a two-tap visual move, prefer one call rather than two model round trips:
+
+```json
+{
+  "actions": [
+    { "type": "tap", "x": 405, "y": 720 },
+    { "type": "tap", "x": 495, "y": 720 }
+  ],
+  "verify_change": false,
+  "verify_pixels": false,
+  "include_screenshot": true
+}
+```
+
+The sequence tool accepts taps, swipes, and allowlisted non-sensitive keys. Coordinates are native device pixels; calibrate them from a recent screenshot instead of assuming a fixed board or phone layout.
 
 If the selected phone disconnects or becomes unauthorized, the server invalidates retained UI state and requires an explicit `device_select` again after reconnecting, even when the serial is unchanged.
 
@@ -206,7 +225,7 @@ The physical harness remains deliberately explicit: it requires a designated tes
 
 Read-only tools include `device_list`, `device_info`, `mirror_status`, `screen_capture`, `ui_dump`, `ui_find`, `app_list`, `app_info`, `permissions_list`, `logcat_capture`, and `logcat_crashes`.
 
-Interactive tools include `device_select`, `mirror_start`, `mirror_stop`, `ui_tap`, `screen_tap`, `screen_swipe`, `screen_long_press`, `key_press`, `text_type`, `app_launch`, `app_stop`, and `wait_for_ui`.
+Interactive tools include `device_select`, `mirror_start`, `mirror_stop`, `ui_tap`, `screen_tap`, `screen_swipe`, `screen_input_sequence`, `screen_long_press`, `key_press`, `text_type`, `app_launch`, `app_stop`, and `wait_for_ui`.
 
 Approval-required tools include `app_install`, `app_clear_data`, and `permissions_set`. Evidence tools are local artifact operations with bounded storage and redaction.
 
@@ -218,6 +237,8 @@ Approval-required tools include `app_install`, `app_clear_data`, and `permission
 - Default text entry is printable ASCII only and rejects password fields.
 - scrcpy audio/control flags are mapped only when supported by the detected version.
 - Logcat duration captures are bounded live reads; `since` selects a bounded timestamp dump.
+- Direct native input defaults to no UI/pixel verification for low latency; request `verify_change: true` when the action must be checked by the server.
+- Display geometry is cached for `displayGeometryMaxAgeMs`; the cache is invalidated when the selected device disconnects or is reselected.
 - No wireless pairing, multiple-device parallel control, OCR, continuous video MCP frames, root features, iOS, or remote listener is provided.
 
 See [SECURITY.md](SECURITY.md) and the documents under [docs/](docs/) for operational details.

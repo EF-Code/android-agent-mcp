@@ -28,6 +28,7 @@ import {
   mirrorStartSchema,
   permissionSetSchema,
   serialSchema,
+  inputSequenceSchema,
   swipeSchema,
   textTypeSchema,
   uiDumpSchema,
@@ -37,7 +38,7 @@ import {
 } from './schemas.js';
 import { AndroidDeviceService, type ActionObservation } from '../service.js';
 import type { UiSelector } from '../ui/types.js';
-import type { AllowedKey } from '../adb/input.js';
+import type { AllowedKey, InputSequenceAction } from '../adb/input.js';
 
 function toSelector(selector: unknown): UiSelector {
   return selector as UiSelector;
@@ -76,6 +77,36 @@ function verificationData(observation: ActionObservation): Record<string, unknow
     after_pixel_sha256: observation.afterPixelSha256,
     changed: changeSignals.length === 0 ? null : changeSignals.some(Boolean),
   };
+}
+
+async function actionContent(
+  service: AndroidDeviceService,
+  serial: string,
+  observation: ActionObservation,
+  data: Record<string, unknown>,
+  includeScreenshot: boolean,
+) {
+  const screenshot = includeScreenshot ? await service.captureActionScreenshot(serial) : null;
+  const response = ok(
+    {
+      ...data,
+      ...verificationData(observation),
+      ...(screenshot === null
+        ? {}
+        : {
+            screenshot: {
+              width: screenshot.width,
+              height: screenshot.height,
+              sha256: screenshot.sha256,
+            },
+          }),
+    },
+    {
+      deviceSerial: serial,
+      warnings: observation.after?.warnings ?? observation.before?.warnings ?? [],
+    },
+  );
+  return screenshot === null ? jsonContent(response) : imageContent(response, screenshot.png);
 }
 
 function autoMirrorWarnings(service: AndroidDeviceService): Array<{
@@ -181,10 +212,8 @@ function registerReadOnlyTools(server: McpServer, service: AndroidDeviceService)
     async (args) => {
       try {
         const serial = await service.selectedSerial();
-        await service.requireCaptureForeground('screen capture');
-        const screenshot = await service.screenshots.capture(serial);
-        const observation = await service.screenObservation(serial);
-        await service.requireCaptureForeground('screen capture result');
+        const capture = await service.captureScreen(serial);
+        const { screenshot } = capture;
         let evidenceDigest: unknown = null;
         if (args.save_to_evidence === true) {
           const session = service.evidence.requireActive();
@@ -194,8 +223,8 @@ function registerReadOnlyTools(server: McpServer, service: AndroidDeviceService)
           {
             width: screenshot.width,
             height: screenshot.height,
-            rotation: observation.display.rotation,
-            foreground: observation.foreground,
+            rotation: capture.rotation,
+            foreground: capture.foreground,
             sha256: screenshot.sha256,
             evidence: evidenceDigest,
           },
@@ -535,19 +564,15 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
     },
     async (args) => {
       try {
-        await service.requireAllowedForeground('screen tap');
+        const serial = await service.selectedSerial({ checkConnection: false });
         const result = await service.tapCoordinates(
           args.x,
           args.y,
-          args.verify_change ?? true,
+          args.verify_change ?? false,
           args.verify_pixels ?? false,
+          args.settle_ms,
         );
-        return jsonContent(
-          ok(verificationData(result), {
-            deviceSerial: await service.selectedSerial(),
-            warnings: result.after?.warnings ?? result.before?.warnings ?? [],
-          }),
-        );
+        return await actionContent(service, serial, result, {}, args.include_screenshot === true);
       } catch (error) {
         return toolError(error);
       }
@@ -564,7 +589,7 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
     },
     async (args) => {
       try {
-        await service.requireAllowedForeground('screen swipe');
+        const serial = await service.selectedSerial({ checkConnection: false });
         const options = {
           ...(args.start_x === undefined ? {} : { startX: args.start_x }),
           ...(args.start_y === undefined ? {} : { startY: args.start_y }),
@@ -572,15 +597,57 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
           ...(args.end_y === undefined ? {} : { endY: args.end_y }),
           ...(args.direction === undefined ? {} : { direction: args.direction }),
           ...(args.duration_ms === undefined ? {} : { durationMs: args.duration_ms }),
-          verifyChange: args.verify_change ?? true,
+          verifyChange: args.verify_change ?? false,
           verifyPixels: args.verify_pixels ?? false,
+          ...(args.settle_ms === undefined ? {} : { settleMs: args.settle_ms }),
         };
         const result = await service.swipe(options);
-        return jsonContent(
-          ok(verificationData(result), {
-            deviceSerial: await service.selectedSerial(),
-            warnings: result.after?.warnings ?? result.before?.warnings ?? [],
-          }),
+        return await actionContent(service, serial, result, {}, args.include_screenshot === true);
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  registerTool(
+    server,
+    service,
+    'screen_input_sequence',
+    {
+      description:
+        'Dispatch a bounded sequence of taps, swipes, or non-sensitive keys in one low-latency input call.',
+      inputSchema: inputSequenceSchema,
+    },
+    async (args) => {
+      try {
+        const actions: InputSequenceAction[] = args.actions.map((action) => {
+          if (action.type === 'tap') return { type: 'tap', x: action.x, y: action.y };
+          if (action.type === 'key') return { type: 'key', key: action.key };
+          return {
+            type: 'swipe',
+            startX: action.start_x,
+            startY: action.start_y,
+            endX: action.end_x,
+            endY: action.end_y,
+            durationMs: action.duration_ms,
+          };
+        });
+        const serial = await service.selectedSerial({ checkConnection: false });
+        const result = await service.inputSequence({
+          actions,
+          verifyChange: args.verify_change ?? false,
+          verifyPixels: args.verify_pixels ?? false,
+          ...(args.inter_action_delay_ms === undefined
+            ? {}
+            : { interActionDelayMs: args.inter_action_delay_ms }),
+          ...(args.settle_ms === undefined ? {} : { settleMs: args.settle_ms }),
+        });
+        return await actionContent(
+          service,
+          serial,
+          result,
+          { action_count: actions.length },
+          args.include_screenshot === true,
         );
       } catch (error) {
         return toolError(error);
@@ -601,28 +668,21 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
     },
     async (args) => {
       try {
-        await service.requireAllowedForeground('screen long press');
-        const serial = await service.selectedSerial();
+        const serial = await service.selectedSerial({ checkConnection: false });
         const result = await service.longPress(
           args.x,
           args.y,
           args.duration_ms ?? 750,
-          args.verify_change ?? true,
+          args.verify_change ?? false,
           args.verify_pixels ?? false,
+          args.settle_ms,
         );
-        return jsonContent(
-          ok(
-            {
-              x: args.x,
-              y: args.y,
-              duration_ms: args.duration_ms ?? 750,
-              ...verificationData(result),
-            },
-            {
-              deviceSerial: serial,
-              warnings: result.after?.warnings ?? result.before?.warnings ?? [],
-            },
-          ),
+        return await actionContent(
+          service,
+          serial,
+          result,
+          { x: args.x, y: args.y, duration_ms: args.duration_ms ?? 750 },
+          args.include_screenshot === true,
         );
       } catch (error) {
         return toolError(error);
@@ -640,20 +700,19 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
     },
     async (args) => {
       try {
-        const serial = await service.selectedSerial();
+        const serial = await service.selectedSerial({ checkConnection: false });
         const result = await service.pressKey(
           args.key as AllowedKey,
-          args.verify_change ?? true,
+          args.verify_change ?? false,
           args.verify_pixels ?? false,
+          args.settle_ms,
         );
-        return jsonContent(
-          ok(
-            { key: args.key, ...verificationData(result) },
-            {
-              deviceSerial: serial,
-              warnings: result.after?.warnings ?? result.before?.warnings ?? [],
-            },
-          ),
+        return await actionContent(
+          service,
+          serial,
+          result,
+          { key: args.key },
+          args.include_screenshot === true,
         );
       } catch (error) {
         return toolError(error);
@@ -918,7 +977,7 @@ export function createMcpServer(config: ServerConfig = loadConfig()): {
 } {
   const service = new AndroidDeviceService(config);
   const server = new McpServer(
-    { name: 'android-device', version: '0.2.0' },
+    { name: 'android-device', version: '0.3.0' },
     { instructions: SERVER_INSTRUCTIONS },
   );
   registerReadOnlyTools(server, service);

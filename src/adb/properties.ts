@@ -44,6 +44,13 @@ function parseDisplayValue(output: string): { width: number; height: number } | 
 export class AdbProperties {
   constructor(private readonly adb: AdbClient) {}
 
+  async resolution(serial: string): Promise<{ width: number; height: number } | null> {
+    const size = await this.adb.text(
+      this.adb.shell(serial, ['wm', 'size'], { maxOutputBytes: 8_192 }),
+    );
+    return parseDisplayValue(size);
+  }
+
   async read(serial: string): Promise<DeviceProperties> {
     const values = new Map<string, string | null>();
     for (const property of PROPERTY_NAMES) {
@@ -74,12 +81,10 @@ export class AdbProperties {
   async display(
     serial: string,
   ): Promise<{ resolution: { width: number; height: number } | null; density: number | null }> {
-    const size = await this.adb.text(
-      this.adb.shell(serial, ['wm', 'size'], { maxOutputBytes: 8_192 }),
-    );
-    const densityOutput = await this.adb.text(
-      this.adb.shell(serial, ['wm', 'density'], { maxOutputBytes: 8_192 }),
-    );
+    const [size, densityOutput] = await Promise.all([
+      this.adb.text(this.adb.shell(serial, ['wm', 'size'], { maxOutputBytes: 8_192 })),
+      this.adb.text(this.adb.shell(serial, ['wm', 'density'], { maxOutputBytes: 8_192 })),
+    ]);
     const densityMatch = /(?:Physical|Override) density:\s*(\d+)/u.exec(densityOutput);
     const density = densityMatch === null ? null : Number(densityMatch[1]);
     return {

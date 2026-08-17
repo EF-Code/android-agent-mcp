@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { AdbClient } from './adb/client.js';
 import { DeviceManager } from './adb/devices.js';
 import { AdbForeground } from './adb/foreground.js';
-import { AdbInput, type AllowedKey } from './adb/input.js';
+import { AdbInput, type AllowedKey, type InputSequenceAction } from './adb/input.js';
 import { AdbInstaller } from './adb/installer.js';
 import { AdbLogcat, type LogCaptureOptions } from './adb/logcat.js';
 import { AdbPackages } from './adb/packages.js';
@@ -93,6 +93,10 @@ export class AndroidDeviceService {
   readonly scrcpy: ScrcpyProcessManager;
   readonly evidence: EvidenceManager;
   private readonly activeLogControllers = new Set<AbortController>();
+  private readonly displayGeometryCache = new Map<
+    string,
+    { sessionId: string; capturedAt: number; width: number; height: number }
+  >();
   private autoMirrorError: AppError | null = null;
   private autoMirrorAttemptedSessionId: string | null = null;
 
@@ -140,14 +144,15 @@ export class AndroidDeviceService {
 
   private handleDisconnect(serial: string): void {
     this.snapshots.invalidate();
+    this.displayGeometryCache.delete(serial);
     this.scrcpy.markDetached(serial);
     this.autoMirrorAttemptedSessionId = null;
     for (const controller of this.activeLogControllers) controller.abort();
     this.evidence.pause(`selected device ${serial} disconnected`);
   }
 
-  async selectedSerial(): Promise<string> {
-    const selected = await this.devices.requireSelected();
+  async selectedSerial(options: { checkConnection?: boolean } = {}): Promise<string> {
+    const selected = await this.devices.requireSelected(options);
     await this.ensureAutoMirror();
     return selected.serial;
   }
@@ -160,6 +165,7 @@ export class AndroidDeviceService {
 
   async selectDevice(serial: string): Promise<Awaited<ReturnType<DeviceManager['select']>>> {
     const result = await this.devices.select(serial);
+    this.displayGeometryCache.delete(serial);
     await this.ensureAutoMirror();
     return result;
   }
@@ -227,6 +233,28 @@ export class AndroidDeviceService {
       foreground,
       observedAt: new Date().toISOString(),
     };
+  }
+
+  private async screenGeometry(serial: string): Promise<{ width: number; height: number }> {
+    const session = this.devices.selected;
+    const cached = this.displayGeometryCache.get(serial);
+    if (
+      cached !== undefined &&
+      (session === null || cached.sessionId === session.sessionId) &&
+      Date.now() - cached.capturedAt <= this.config.displayGeometryMaxAgeMs
+    ) {
+      return { width: cached.width, height: cached.height };
+    }
+    const resolution = await this.properties.resolution(serial);
+    const geometry = { width: resolution?.width ?? 0, height: resolution?.height ?? 0 };
+    if (session !== null && session.serial === serial) {
+      this.displayGeometryCache.set(serial, {
+        sessionId: session.sessionId,
+        capturedAt: Date.now(),
+        ...geometry,
+      });
+    }
+    return geometry;
   }
 
   async deviceInfo(): Promise<DeviceInfo> {
@@ -301,18 +329,18 @@ export class AndroidDeviceService {
     return this.snapshots.put(safeSnapshot);
   }
 
-  async currentForeground(): Promise<ForegroundApp> {
-    return this.foreground.read(await this.selectedSerial());
+  async currentForeground(serial?: string): Promise<ForegroundApp> {
+    return this.foreground.read(serial ?? (await this.selectedSerial()));
   }
 
-  async requireAllowedForeground(operation: string): Promise<ForegroundApp> {
-    const foreground = await this.currentForeground();
+  async requireAllowedForeground(operation: string, serial?: string): Promise<ForegroundApp> {
+    const foreground = await this.currentForeground(serial);
     this.policy.assertForegroundAllowed(foreground, operation);
     return foreground;
   }
 
-  async requireCaptureForeground(operation: string): Promise<ForegroundApp> {
-    const foreground = await this.currentForeground();
+  async requireCaptureForeground(operation: string, serial?: string): Promise<ForegroundApp> {
+    const foreground = await this.currentForeground(serial);
     if (
       foreground.packageName === null ||
       !this.policy.isPackageAllowed(foreground.packageName) ||
@@ -326,6 +354,27 @@ export class AndroidDeviceService {
     return foreground;
   }
 
+  async captureActionScreenshot(
+    serial: string,
+  ): Promise<Awaited<ReturnType<AdbScreenshots['capture']>>> {
+    await this.requireCaptureForeground('action screenshot', serial);
+    return this.screenshots.capture(serial);
+  }
+
+  async captureScreen(serial: string): Promise<{
+    screenshot: Awaited<ReturnType<AdbScreenshots['capture']>>;
+    rotation: 0 | 1 | 2 | 3;
+    foreground: ForegroundApp;
+  }> {
+    await this.requireCaptureForeground('screen capture', serial);
+    const [screenshot, rotation] = await Promise.all([
+      this.screenshots.capture(serial),
+      this.properties.rotation(serial),
+    ]);
+    const foreground = await this.requireCaptureForeground('screen capture result', serial);
+    return { screenshot, rotation, foreground };
+  }
+
   async requireFreshSnapshot(snapshotId: string): Promise<UiSnapshot> {
     const session = await this.devices.requireSelected();
     return this.snapshots.requireFresh(snapshotId, {
@@ -335,9 +384,9 @@ export class AndroidDeviceService {
     });
   }
 
-  private async pixelDigest(): Promise<string> {
-    await this.requireCaptureForeground('pixel verification');
-    return (await this.screenshots.capture(await this.selectedSerial())).sha256;
+  private async pixelDigest(serial?: string): Promise<string> {
+    await this.requireCaptureForeground('pixel verification', serial);
+    return (await this.screenshots.capture(serial ?? (await this.selectedSerial()))).sha256;
   }
 
   async captureLogcat(
@@ -353,8 +402,10 @@ export class AndroidDeviceService {
     }
   }
 
-  async stabilize(): Promise<void> {
-    await new Promise((resolve) => setTimeout(resolve, STARTUP_WAIT_MS));
+  async stabilize(milliseconds = STARTUP_WAIT_MS): Promise<void> {
+    validateDuration(milliseconds, 'settleMs', 2_000);
+    if (milliseconds === 0) return;
+    await new Promise((resolve) => setTimeout(resolve, milliseconds));
   }
 
   async verifyForeground(packageName: string): Promise<ForegroundApp> {
@@ -409,7 +460,7 @@ export class AndroidDeviceService {
     afterPixelSha256: string | null;
   }> {
     const serial = await this.selectedSerial();
-    const foreground = await this.requireAllowedForeground('semantic tap');
+    const foreground = await this.requireAllowedForeground('semantic tap', serial);
     const before =
       sourceSnapshot === undefined
         ? await this.captureUi()
@@ -437,12 +488,15 @@ export class AndroidDeviceService {
       );
     }
     this.policy.assertPackageAllowed(match.node.packageName);
-    const actionForeground = await this.requireAllowedForeground('semantic tap before action');
+    const actionForeground = await this.requireAllowedForeground(
+      'semantic tap before action',
+      serial,
+    );
     assertSameForeground(before.foreground, actionForeground, 'the semantic tap');
     await this.input.tap(serial, match.node.center.x, match.node.center.y);
-    await this.stabilize();
+    await this.stabilize(verifyChange ? STARTUP_WAIT_MS : 0);
     const after = verifyChange ? await this.captureUi() : null;
-    const afterPixelSha256 = verifyPixels ? await this.pixelDigest() : null;
+    const afterPixelSha256 = verifyPixels ? await this.pixelDigest(serial) : null;
     return { before, after, nodeId: match.node.nodeId, beforePixelSha256, afterPixelSha256 };
   }
 
@@ -451,31 +505,32 @@ export class AndroidDeviceService {
     y: number,
     verifyChange: boolean,
     verifyPixels = false,
+    settleMs?: number,
   ): Promise<ActionObservation> {
-    const serial = await this.selectedSerial();
-    await this.requireAllowedForeground('screen tap');
-    const observation = await this.screenObservation(serial);
+    const serial = await this.selectedSerial({ checkConnection: false });
+    const [, geometry] = await Promise.all([
+      this.requireAllowedForeground('screen tap', serial),
+      this.screenGeometry(serial),
+    ]);
     validateCoordinate(x, 'x');
     validateCoordinate(y, 'y');
-    if (
-      observation.display.width > 0 &&
-      (x >= observation.display.width || y >= observation.display.height)
-    ) {
+    if (geometry.width > 0 && (x >= geometry.width || y >= geometry.height)) {
       throw new AppError(
         ErrorCode.InvalidCoordinates,
         'Coordinates are outside the native device display bounds.',
         {
-          details: { x, y, display: observation.display },
+          details: { x, y, display: geometry },
         },
       );
     }
     const before = verifyChange ? await this.captureUi() : null;
-    const beforePixelSha256 = verifyPixels ? await this.pixelDigest() : null;
-    await this.requireAllowedForeground('screen tap before action');
+    const beforePixelSha256 = verifyPixels ? await this.pixelDigest(serial) : null;
+    if (verifyChange || verifyPixels)
+      await this.requireAllowedForeground('screen tap before action', serial);
     await this.input.tap(serial, x, y);
-    await this.stabilize();
+    await this.stabilize(settleMs ?? (verifyChange ? STARTUP_WAIT_MS : 0));
     const after = verifyChange ? await this.captureUi() : null;
-    const afterPixelSha256 = verifyPixels ? await this.pixelDigest() : null;
+    const afterPixelSha256 = verifyPixels ? await this.pixelDigest(serial) : null;
     return { before, after, beforePixelSha256, afterPixelSha256 };
   }
 
@@ -488,12 +543,15 @@ export class AndroidDeviceService {
     durationMs?: number;
     verifyChange: boolean;
     verifyPixels?: boolean;
+    settleMs?: number;
   }): Promise<ActionObservation> {
-    const serial = await this.selectedSerial();
-    await this.requireAllowedForeground('screen swipe');
-    const observation = await this.screenObservation(serial);
-    const width = observation.display.width;
-    const height = observation.display.height;
+    const serial = await this.selectedSerial({ checkConnection: false });
+    const [, geometry] = await Promise.all([
+      this.requireAllowedForeground('screen swipe', serial),
+      this.screenGeometry(serial),
+    ]);
+    const width = geometry.width;
+    const height = geometry.height;
     let startX = options.startX;
     let startY = options.startY;
     let endX = options.endX;
@@ -550,8 +608,9 @@ export class AndroidDeviceService {
       );
     }
     const before = options.verifyChange ? await this.captureUi() : null;
-    const beforePixelSha256 = options.verifyPixels === true ? await this.pixelDigest() : null;
-    await this.requireAllowedForeground('screen swipe before action');
+    const beforePixelSha256 = options.verifyPixels === true ? await this.pixelDigest(serial) : null;
+    if (options.verifyChange || options.verifyPixels === true)
+      await this.requireAllowedForeground('screen swipe before action', serial);
     await this.input.swipe(
       serial,
       startX!,
@@ -560,9 +619,53 @@ export class AndroidDeviceService {
       endY!,
       validateDuration(options.durationMs ?? 300, 'durationMs', 30_000),
     );
-    await this.stabilize();
+    await this.stabilize(options.settleMs ?? (options.verifyChange ? STARTUP_WAIT_MS : 0));
     const after = options.verifyChange ? await this.captureUi() : null;
-    const afterPixelSha256 = options.verifyPixels === true ? await this.pixelDigest() : null;
+    const afterPixelSha256 = options.verifyPixels === true ? await this.pixelDigest(serial) : null;
+    return { before, after, beforePixelSha256, afterPixelSha256 };
+  }
+
+  async inputSequence(options: {
+    actions: readonly InputSequenceAction[];
+    interActionDelayMs?: number;
+    verifyChange: boolean;
+    verifyPixels?: boolean;
+    settleMs?: number;
+  }): Promise<ActionObservation> {
+    const serial = await this.selectedSerial({ checkConnection: false });
+    const [, geometry] = await Promise.all([
+      this.requireAllowedForeground('screen input sequence', serial),
+      this.screenGeometry(serial),
+    ]);
+    const assertInBounds = (x: number, y: number): void => {
+      validateCoordinate(x, 'coordinate');
+      validateCoordinate(y, 'coordinate');
+      if (geometry.width > 0 && (x >= geometry.width || y >= geometry.height)) {
+        throw new AppError(
+          ErrorCode.InvalidCoordinates,
+          'Input sequence coordinates are outside display bounds.',
+          { details: { x, y, display: geometry } },
+        );
+      }
+    };
+    for (const action of options.actions) {
+      if (action.type === 'tap' || action.type === 'key') {
+        if (action.type === 'tap') assertInBounds(action.x, action.y);
+      } else {
+        assertInBounds(action.startX, action.startY);
+        assertInBounds(action.endX, action.endY);
+        validateDuration(action.durationMs, 'durationMs', 30_000);
+      }
+    }
+    validateDuration(options.interActionDelayMs ?? 0, 'interActionDelayMs', 1_000);
+    const before = options.verifyChange ? await this.captureUi() : null;
+    const beforePixelSha256 = options.verifyPixels === true ? await this.pixelDigest(serial) : null;
+    if (options.verifyChange || options.verifyPixels === true)
+      await this.requireAllowedForeground('screen input sequence before action', serial);
+    await this.input.sequence(serial, options.actions, options.interActionDelayMs ?? 0);
+    await this.stabilize(options.settleMs ?? (options.verifyChange ? STARTUP_WAIT_MS : 0));
+    const after = options.verifyChange ? await this.captureUi() : null;
+    const afterPixelSha256 = options.verifyPixels === true ? await this.pixelDigest(serial) : null;
     return { before, after, beforePixelSha256, afterPixelSha256 };
   }
 
@@ -572,29 +675,30 @@ export class AndroidDeviceService {
     durationMs: number,
     verifyChange = true,
     verifyPixels = false,
+    settleMs?: number,
   ): Promise<ActionObservation> {
-    const serial = await this.selectedSerial();
-    await this.requireAllowedForeground('screen long press');
-    const observation = await this.screenObservation(serial);
-    if (
-      observation.display.width > 0 &&
-      (x >= observation.display.width || y >= observation.display.height)
-    ) {
+    const serial = await this.selectedSerial({ checkConnection: false });
+    const [, geometry] = await Promise.all([
+      this.requireAllowedForeground('screen long press', serial),
+      this.screenGeometry(serial),
+    ]);
+    if (geometry.width > 0 && (x >= geometry.width || y >= geometry.height)) {
       throw new AppError(
         ErrorCode.InvalidCoordinates,
         'Long-press coordinates are outside the native device display bounds.',
         {
-          details: { x, y, display: observation.display },
+          details: { x, y, display: geometry },
         },
       );
     }
     const before = verifyChange ? await this.captureUi() : null;
-    const beforePixelSha256 = verifyPixels ? await this.pixelDigest() : null;
-    await this.requireAllowedForeground('screen long press before action');
+    const beforePixelSha256 = verifyPixels ? await this.pixelDigest(serial) : null;
+    if (verifyChange || verifyPixels)
+      await this.requireAllowedForeground('screen long press before action', serial);
     await this.input.longPress(serial, x, y, validateDuration(durationMs, 'durationMs', 30_000));
-    await this.stabilize();
+    await this.stabilize(settleMs ?? (verifyChange ? STARTUP_WAIT_MS : 0));
     const after = verifyChange ? await this.captureUi() : null;
-    const afterPixelSha256 = verifyPixels ? await this.pixelDigest() : null;
+    const afterPixelSha256 = verifyPixels ? await this.pixelDigest(serial) : null;
     return { before, after, beforePixelSha256, afterPixelSha256 };
   }
 
@@ -602,16 +706,18 @@ export class AndroidDeviceService {
     key: AllowedKey,
     verifyChange = true,
     verifyPixels = false,
+    settleMs?: number,
   ): Promise<ActionObservation> {
-    const serial = await this.selectedSerial();
-    await this.requireAllowedForeground('key press');
+    const serial = await this.selectedSerial({ checkConnection: false });
+    await this.requireAllowedForeground('key press', serial);
     const before = verifyChange ? await this.captureUi() : null;
-    const beforePixelSha256 = verifyPixels ? await this.pixelDigest() : null;
-    await this.requireAllowedForeground('key press before action');
+    const beforePixelSha256 = verifyPixels ? await this.pixelDigest(serial) : null;
+    if (verifyChange || verifyPixels)
+      await this.requireAllowedForeground('key press before action', serial);
     await this.input.key(serial, key);
-    await this.stabilize();
+    await this.stabilize(settleMs ?? (verifyChange ? STARTUP_WAIT_MS : 0));
     const after = verifyChange ? await this.captureUi() : null;
-    const afterPixelSha256 = verifyPixels ? await this.pixelDigest() : null;
+    const afterPixelSha256 = verifyPixels ? await this.pixelDigest(serial) : null;
     return { before, after, beforePixelSha256, afterPixelSha256 };
   }
 
@@ -667,7 +773,7 @@ export class AndroidDeviceService {
   ): Promise<EvidenceSession> {
     const device = await this.deviceInfo();
     const manifest = {
-      serverVersion: '0.2.0',
+      serverVersion: '0.3.0',
       adbVersion: await this.adb.version(),
       scrcpyVersion: this.scrcpy.status().capabilities?.version ?? null,
       device,

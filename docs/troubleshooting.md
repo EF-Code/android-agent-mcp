@@ -28,6 +28,10 @@ After a disconnect or authorization transition, call `device_list` and then `dev
 
 Check that the device is authorized and unlocked. UIAutomator may be empty or incomplete for WebViews, games, video, Compose accessibility gaps, and custom canvases. Use coordinate fallback only after inspecting the native display dimensions and rotation.
 
+## Actions feel slow
+
+For visual apps, games, and custom canvases, avoid calling `ui_dump`, `ui_find`, or `wait_for_ui` between every input. Capture the screen once, use native device-pixel coordinates, and call `screen_tap`/`screen_swipe` with `verify_change: false` and `verify_pixels: false`. Batch related taps, swipes, and keys with `screen_input_sequence`; set `include_screenshot: true` only when the next decision needs a new image. Use `duration_ms: 100` for a short drag when the app accepts it. Semantic `ui_tap` remains intentionally slower because it resolves and verifies the accessibility hierarchy.
+
 ## `scrcpy` is missing or does not open
 
 The default session makes one best-effort attempt to start a visible mirror after device selection. Failure is reported as a warning and does not disable ADB tools. Install scrcpy and rerun `npm run check:environment -- --require-scrcpy`; set `ANDROID_AGENT_MCP_MIRROR_AUTO_START=false` when headless operation is intentional. After `mirror_stop`, call `mirror_start` to reopen it explicitly.

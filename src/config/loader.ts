@@ -31,6 +31,7 @@ const configInputSchema = z
       .max(365 * 24 * 60 * 60 * 1_000),
     defaultTimeoutMs: z.number().int().min(250).max(120_000),
     uiSnapshotMaxAgeMs: z.number().int().min(250).max(60_000),
+    displayGeometryMaxAgeMs: z.number().int().min(250).max(60_000),
     approvalMode: z.enum(['prompt', 'allow', 'deny']),
     mirror: z
       .object({
@@ -127,6 +128,7 @@ function environmentOverrides(env: NodeJS.ProcessEnv): ConfigInput {
     ['evidenceRetentionMaxAgeMs', 'EVIDENCE_RETENTION_MAX_AGE_MS'],
     ['defaultTimeoutMs', 'DEFAULT_TIMEOUT_MS'],
     ['uiSnapshotMaxAgeMs', 'UI_SNAPSHOT_MAX_AGE_MS'],
+    ['displayGeometryMaxAgeMs', 'DISPLAY_GEOMETRY_MAX_AGE_MS'],
   ];
 
   for (const [field, variable] of numericFields) {
@@ -239,6 +241,10 @@ export function loadConfig(
       overrides.defaultTimeoutMs ?? input.defaultTimeoutMs ?? defaults.defaultTimeoutMs,
     uiSnapshotMaxAgeMs:
       overrides.uiSnapshotMaxAgeMs ?? input.uiSnapshotMaxAgeMs ?? defaults.uiSnapshotMaxAgeMs,
+    displayGeometryMaxAgeMs:
+      overrides.displayGeometryMaxAgeMs ??
+      input.displayGeometryMaxAgeMs ??
+      defaults.displayGeometryMaxAgeMs,
     approvalMode: overrides.approvalMode ?? input.approvalMode ?? defaults.approvalMode,
     mirror,
   };

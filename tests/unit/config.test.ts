@@ -11,11 +11,13 @@ test('loads defaults and applies validated environment overrides', () => {
       ANDROID_AGENT_MCP_ALLOWED_PACKAGES: 'com.example.app, com.example.test',
       ANDROID_AGENT_MCP_ALLOWED_RUNTIME_PERMISSIONS: 'android.permission.CAMERA',
       ANDROID_AGENT_MCP_DEFAULT_TIMEOUT_MS: '5000',
+      ANDROID_AGENT_MCP_DISPLAY_GEOMETRY_MAX_AGE_MS: '5000',
     },
   });
   assert.deepEqual(config.allowedPackages, ['com.example.app', 'com.example.test']);
   assert.deepEqual(config.allowedRuntimePermissions, ['android.permission.CAMERA']);
   assert.equal(config.defaultTimeoutMs, 5_000);
+  assert.equal(config.displayGeometryMaxAgeMs, 5_000);
   assert.equal(config.mirror.audio, false);
   assert.equal(config.mirror.autoStart, true);
   assert.equal(config.mirror.leaveRunningOnExit, false);
@@ -25,6 +27,7 @@ test('defaults to broad non-sensitive package control and visible mirroring', ()
   const config = loadConfig({ env: {} });
   assert.deepEqual(config.allowedPackages, ['*']);
   assert.equal(config.mirror.autoStart, true);
+  assert.equal(config.displayGeometryMaxAgeMs, 10_000);
   assert.equal(config.sensitivePackages.includes('*.bank.*'), true);
   assert.equal(config.sensitivePackages.includes('com.android.settings'), false);
 });

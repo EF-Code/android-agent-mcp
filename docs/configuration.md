@@ -21,6 +21,7 @@ The server starts with broad non-sensitive phone-control defaults and accepts an
 | `evidenceRetentionMaxAgeMs` | `ANDROID_AGENT_MCP_EVIDENCE_RETENTION_MAX_AGE_MS` | Maximum age of completed evidence directories before safe root-scoped cleanup |
 | `defaultTimeoutMs`          | `ANDROID_AGENT_MCP_DEFAULT_TIMEOUT_MS`            | Default ADB command timeout                                                   |
 | `uiSnapshotMaxAgeMs`        | `ANDROID_AGENT_MCP_UI_SNAPSHOT_MAX_AGE_MS`        | Semantic snapshot freshness window                                            |
+| `displayGeometryMaxAgeMs`   | `ANDROID_AGENT_MCP_DISPLAY_GEOMETRY_MAX_AGE_MS`   | Native display-size cache age for direct input; default 10000 ms              |
 | `approvalMode`              | `ANDROID_AGENT_MCP_APPROVAL_MODE`                 | Host policy: `prompt` (fail closed), `allow`, or `deny`                       |
 | `mirror.autoStart`          | `ANDROID_AGENT_MCP_MIRROR_AUTO_START`             | Start a visible scrcpy mirror after device selection; default `true`          |
 
