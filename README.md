@@ -164,6 +164,8 @@ The default `allowedPackages` policy is `*`, so the agent does not require manua
 
 ## Preferred operating loop
 
+Visual control sessions follow the same frame → structured action → ADB → next-frame pattern as [Google's Android Computer Use quickstart](https://github.com/google-gemini/gemini-android-computer-use-quickstart), while remaining model-neutral and retaining this server's device, package, approval, and evidence boundaries.
+
 1. Call `device_list`.
 2. Call `device_select` when selection is not unambiguous.
 3. Call `device_info` and confirm the target.
