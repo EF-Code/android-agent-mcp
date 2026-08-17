@@ -24,6 +24,64 @@ export const KEY_CODES = {
 
 export type AllowedKey = keyof typeof KEY_CODES;
 
+export type InputSequenceAction =
+  | { type: 'tap'; x: number; y: number }
+  | {
+      type: 'swipe';
+      startX: number;
+      startY: number;
+      endX: number;
+      endY: number;
+      durationMs: number;
+    }
+  | { type: 'key'; key: Exclude<AllowedKey, 'power' | 'wake'> };
+
+function formatSleepSeconds(milliseconds: number): string {
+  const seconds = Math.floor(milliseconds / 1_000);
+  const remainder = milliseconds % 1_000;
+  return `${seconds}.${String(remainder).padStart(3, '0')}`;
+}
+
+export function buildInputSequenceScript(
+  actions: readonly InputSequenceAction[],
+  interActionDelayMs = 0,
+): string {
+  if (actions.length === 0 || actions.length > 32) {
+    throw new AppError(
+      ErrorCode.InvalidInput,
+      'Input sequences must contain between 1 and 32 actions.',
+    );
+  }
+  validateDuration(interActionDelayMs, 'interActionDelayMs', 1_000);
+
+  const commands = actions.map((action) => {
+    if (action.type === 'tap') {
+      validateCoordinate(action.x, 'x');
+      validateCoordinate(action.y, 'y');
+      return `input tap ${action.x} ${action.y}`;
+    }
+    if (action.type === 'swipe') {
+      validateCoordinate(action.startX, 'startX');
+      validateCoordinate(action.startY, 'startY');
+      validateCoordinate(action.endX, 'endX');
+      validateCoordinate(action.endY, 'endY');
+      validateDuration(action.durationMs, 'durationMs', 30_000);
+      return `input swipe ${action.startX} ${action.startY} ${action.endX} ${action.endY} ${action.durationMs}`;
+    }
+    const key = action.key as string;
+    if (!(key in KEY_CODES) || key === 'power' || key === 'wake') {
+      throw new AppError(ErrorCode.InvalidInput, 'Input sequence key is not allowlisted.', {
+        details: { key },
+      });
+    }
+    return `input keyevent ${KEY_CODES[key as AllowedKey]}`;
+  });
+
+  const separator =
+    interActionDelayMs === 0 ? '; ' : `; sleep ${formatSleepSeconds(interActionDelayMs)}; `;
+  return commands.join(separator);
+}
+
 export function encodeSafeAsciiText(value: string): string {
   if (value.length === 0 || value.length > 1_024) {
     throw new AppError(
@@ -90,6 +148,15 @@ export class AdbInput {
       String(endY),
       String(durationMs),
     ]);
+  }
+
+  async sequence(
+    serial: string,
+    actions: readonly InputSequenceAction[],
+    interActionDelayMs = 0,
+  ): Promise<void> {
+    const script = buildInputSequenceScript(actions, interActionDelayMs);
+    await this.adb.shell(serial, ['sh', '-c', script]);
   }
 
   async longPress(serial: string, x: number, y: number, durationMs: number): Promise<void> {

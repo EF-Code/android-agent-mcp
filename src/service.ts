@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { AdbClient } from './adb/client.js';
 import { DeviceManager } from './adb/devices.js';
 import { AdbForeground } from './adb/foreground.js';
-import { AdbInput, type AllowedKey } from './adb/input.js';
+import { AdbInput, type AllowedKey, type InputSequenceAction } from './adb/input.js';
 import { AdbInstaller } from './adb/installer.js';
 import { AdbLogcat, type LogCaptureOptions } from './adb/logcat.js';
 import { AdbPackages } from './adb/packages.js';
@@ -353,8 +353,10 @@ export class AndroidDeviceService {
     }
   }
 
-  async stabilize(): Promise<void> {
-    await new Promise((resolve) => setTimeout(resolve, STARTUP_WAIT_MS));
+  async stabilize(milliseconds = STARTUP_WAIT_MS): Promise<void> {
+    validateDuration(milliseconds, 'settleMs', 2_000);
+    if (milliseconds === 0) return;
+    await new Promise((resolve) => setTimeout(resolve, milliseconds));
   }
 
   async verifyForeground(packageName: string): Promise<ForegroundApp> {
@@ -561,6 +563,50 @@ export class AndroidDeviceService {
       validateDuration(options.durationMs ?? 300, 'durationMs', 30_000),
     );
     await this.stabilize();
+    const after = options.verifyChange ? await this.captureUi() : null;
+    const afterPixelSha256 = options.verifyPixels === true ? await this.pixelDigest() : null;
+    return { before, after, beforePixelSha256, afterPixelSha256 };
+  }
+
+  async inputSequence(options: {
+    actions: readonly InputSequenceAction[];
+    interActionDelayMs?: number;
+    verifyChange: boolean;
+    verifyPixels?: boolean;
+    settleMs?: number;
+  }): Promise<ActionObservation> {
+    const serial = await this.selectedSerial();
+    await this.requireAllowedForeground('screen input sequence');
+    const observation = await this.screenObservation(serial);
+    const assertInBounds = (x: number, y: number): void => {
+      validateCoordinate(x, 'coordinate');
+      validateCoordinate(y, 'coordinate');
+      if (
+        observation.display.width > 0 &&
+        (x >= observation.display.width || y >= observation.display.height)
+      ) {
+        throw new AppError(
+          ErrorCode.InvalidCoordinates,
+          'Input sequence coordinates are outside display bounds.',
+          { details: { x, y, display: observation.display } },
+        );
+      }
+    };
+    for (const action of options.actions) {
+      if (action.type === 'tap' || action.type === 'key') {
+        if (action.type === 'tap') assertInBounds(action.x, action.y);
+      } else {
+        assertInBounds(action.startX, action.startY);
+        assertInBounds(action.endX, action.endY);
+        validateDuration(action.durationMs, 'durationMs', 30_000);
+      }
+    }
+    validateDuration(options.interActionDelayMs ?? 0, 'interActionDelayMs', 1_000);
+    const before = options.verifyChange ? await this.captureUi() : null;
+    const beforePixelSha256 = options.verifyPixels === true ? await this.pixelDigest() : null;
+    await this.requireAllowedForeground('screen input sequence before action');
+    await this.input.sequence(serial, options.actions, options.interActionDelayMs ?? 0);
+    await this.stabilize(options.settleMs ?? (options.verifyChange ? STARTUP_WAIT_MS : 0));
     const after = options.verifyChange ? await this.captureUi() : null;
     const afterPixelSha256 = options.verifyPixels === true ? await this.pixelDigest() : null;
     return { before, after, beforePixelSha256, afterPixelSha256 };

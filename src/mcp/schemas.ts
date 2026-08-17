@@ -79,6 +79,52 @@ export const swipeSchema = {
   duration_ms: z.number().int().min(0).max(30_000).optional(),
   verify_change: z.boolean().optional(),
   verify_pixels: z.boolean().optional(),
+  settle_ms: z.number().int().min(0).max(2_000).optional(),
+  include_screenshot: z.boolean().optional(),
+};
+
+const inputSequenceActionSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('tap'),
+    x: z.number().int().min(0).max(100_000),
+    y: z.number().int().min(0).max(100_000),
+  }),
+  z.object({
+    type: z.literal('swipe'),
+    start_x: z.number().int().min(0).max(100_000),
+    start_y: z.number().int().min(0).max(100_000),
+    end_x: z.number().int().min(0).max(100_000),
+    end_y: z.number().int().min(0).max(100_000),
+    duration_ms: z.number().int().min(0).max(30_000),
+  }),
+  z.object({
+    type: z.literal('key'),
+    key: z.enum([
+      'back',
+      'home',
+      'enter',
+      'tab',
+      'escape',
+      'delete',
+      'arrow_up',
+      'arrow_down',
+      'arrow_left',
+      'arrow_right',
+      'menu',
+      'app_switch',
+      'volume_up',
+      'volume_down',
+    ]),
+  }),
+]);
+
+export const inputSequenceSchema = {
+  actions: z.array(inputSequenceActionSchema).min(1).max(32),
+  inter_action_delay_ms: z.number().int().min(0).max(1_000).optional(),
+  verify_change: z.boolean().optional(),
+  verify_pixels: z.boolean().optional(),
+  settle_ms: z.number().int().min(0).max(2_000).optional(),
+  include_screenshot: z.boolean().optional(),
 };
 
 export const keyPressSchema = {
@@ -100,6 +146,7 @@ export const keyPressSchema = {
   ]),
   verify_change: z.boolean().optional(),
   verify_pixels: z.boolean().optional(),
+  settle_ms: z.number().int().min(0).max(2_000).optional(),
 };
 
 export const textTypeSchema = {

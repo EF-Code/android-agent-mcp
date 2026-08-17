@@ -28,6 +28,7 @@ import {
   mirrorStartSchema,
   permissionSetSchema,
   serialSchema,
+  inputSequenceSchema,
   swipeSchema,
   textTypeSchema,
   uiDumpSchema,
@@ -37,7 +38,7 @@ import {
 } from './schemas.js';
 import { AndroidDeviceService, type ActionObservation } from '../service.js';
 import type { UiSelector } from '../ui/types.js';
-import type { AllowedKey } from '../adb/input.js';
+import type { AllowedKey, InputSequenceAction } from '../adb/input.js';
 
 function toSelector(selector: unknown): UiSelector {
   return selector as UiSelector;
@@ -582,6 +583,53 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
             warnings: result.after?.warnings ?? result.before?.warnings ?? [],
           }),
         );
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  registerTool(
+    server,
+    service,
+    'screen_input_sequence',
+    {
+      description:
+        'Dispatch a bounded sequence of taps, swipes, or non-sensitive keys in one low-latency input call.',
+      inputSchema: inputSequenceSchema,
+    },
+    async (args) => {
+      try {
+        const actions: InputSequenceAction[] = args.actions.map((action) => {
+          if (action.type === 'tap') return { type: 'tap', x: action.x, y: action.y };
+          if (action.type === 'key') return { type: 'key', key: action.key };
+          return {
+            type: 'swipe',
+            startX: action.start_x,
+            startY: action.start_y,
+            endX: action.end_x,
+            endY: action.end_y,
+            durationMs: action.duration_ms,
+          };
+        });
+        const serial = await service.selectedSerial();
+        const result = await service.inputSequence({
+          actions,
+          verifyChange: args.verify_change ?? false,
+          verifyPixels: args.verify_pixels ?? false,
+          ...(args.inter_action_delay_ms === undefined
+            ? {}
+            : { interActionDelayMs: args.inter_action_delay_ms }),
+          ...(args.settle_ms === undefined ? {} : { settleMs: args.settle_ms }),
+        });
+        const response = ok(
+          { action_count: actions.length, ...verificationData(result) },
+          {
+            deviceSerial: serial,
+            warnings: result.after?.warnings ?? result.before?.warnings ?? [],
+          },
+        );
+        return jsonContent(response);
       } catch (error) {
         return toolError(error);
       }

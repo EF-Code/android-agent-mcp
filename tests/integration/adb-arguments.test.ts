@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { AdbClient, type CommandRunner } from '../../src/adb/client.js';
-import { AdbInput } from '../../src/adb/input.js';
+import { AdbInput, buildInputSequenceScript } from '../../src/adb/input.js';
 import { AdbLogcat } from '../../src/adb/logcat.js';
 import { AdbPackages } from '../../src/adb/packages.js';
 import { AdbScreenshots } from '../../src/adb/screenshots.js';
@@ -77,6 +77,37 @@ test('passes validated serials and exact input argument arrays', async () => {
   await new AdbInput(adb).tap('serial-1', 10, 20);
   assert.deepEqual(runner.calls[0]?.args, ['-s', 'serial-1', 'shell', 'input', 'tap', '10', '20']);
   assert.equal(runner.calls[0]?.executable, '/opt/android/platform-tools/adb');
+});
+
+test('batches safe input actions into one generated remote script', async () => {
+  const runner = new RecordingRunner();
+  const adb = new AdbClient({
+    adbPath: 'adb',
+    defaultTimeoutMs: 5_000,
+    maxOutputBytes: 100_000,
+    runner,
+  });
+  await new AdbInput(adb).sequence(
+    'serial-1',
+    [
+      { type: 'tap', x: 10, y: 20 },
+      { type: 'swipe', startX: 10, startY: 20, endX: 30, endY: 40, durationMs: 100 },
+      { type: 'key', key: 'back' },
+    ],
+    50,
+  );
+  assert.deepEqual(runner.calls[0]?.args, [
+    '-s',
+    'serial-1',
+    'shell',
+    'sh',
+    '-c',
+    'input tap 10 20; sleep 0.050; input swipe 10 20 30 40 100; sleep 0.050; input keyevent 4',
+  ]);
+  assert.equal(
+    buildInputSequenceScript([{ type: 'tap', x: 1, y: 2 }]),
+    'input tap 1 2',
+  );
 });
 
 test('uses direct ADB argument arrays for screenshots and UIAutomator', async () => {

@@ -165,6 +165,15 @@ export const TOOL_METADATA = {
       openWorldHint: true,
     },
   },
+  screen_input_sequence: {
+    risk: 'interactive',
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+  },
   screen_long_press: {
     risk: 'interactive',
     annotations: {
