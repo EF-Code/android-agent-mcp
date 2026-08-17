@@ -192,6 +192,29 @@ test('returns image content and structured errors over MCP stdio', async () => {
     });
     assert.equal(visualStop.isError, false);
 
+    const staleVisualStart = await client.callTool({
+      name: 'visual_control_start',
+      arguments: {},
+    });
+    const staleVisualText =
+      (staleVisualStart.content as Array<{ type: string; text?: string }>).find(
+        (item) => item.type === 'text',
+      )?.text ?? '';
+    const staleVisualSession = JSON.parse(staleVisualText) as { data: { session_id: string } };
+    const reselection = await client.callTool({
+      name: 'device_select',
+      arguments: { serial: 'protocol-test' },
+    });
+    assert.equal(reselection.isError, false);
+    const staleVisualAction = await client.callTool({
+      name: 'visual_control_action',
+      arguments: {
+        session_id: staleVisualSession.data.session_id,
+        actions: [{ type: 'tap', x: 100, y: 200 }],
+      },
+    });
+    assert.equal(staleVisualAction.isError, true);
+
     const invalidResult = await client.callTool({
       name: 'screen_capture',
       arguments: { save_to_evidence: 'yes' },
