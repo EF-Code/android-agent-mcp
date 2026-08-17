@@ -26,6 +26,7 @@ export interface ServerConfig {
   evidenceRetentionMaxAgeMs: number;
   defaultTimeoutMs: number;
   uiSnapshotMaxAgeMs: number;
+  displayGeometryMaxAgeMs: number;
   approvalMode: ApprovalMode;
   mirror: MirrorConfig;
 }

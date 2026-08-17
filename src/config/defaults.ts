@@ -25,6 +25,7 @@ export function defaultConfig(): ServerConfig {
     evidenceRetentionMaxAgeMs: 7 * 24 * 60 * 60 * 1_000,
     defaultTimeoutMs: 15_000,
     uiSnapshotMaxAgeMs: 3_000,
+    displayGeometryMaxAgeMs: 10_000,
     approvalMode: 'prompt',
     mirror: {
       autoStart: true,
