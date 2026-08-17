@@ -138,6 +138,12 @@ test('returns image content and structured errors over MCP stdio', async () => {
     };
     assert.equal(visualStartData.data.coordinate_space, 'normalized_1000');
 
+    const duplicateVisualStart = await client.callTool({
+      name: 'visual_control_start',
+      arguments: {},
+    });
+    assert.equal(duplicateVisualStart.isError, true);
+
     const visualAction = await client.callTool({
       name: 'visual_control_action',
       arguments: {
@@ -157,6 +163,15 @@ test('returns image content and structured errors over MCP stdio', async () => {
     assert.ok(
       visualActionContent.some((item) => item.type === 'image' && item.mimeType === 'image/png'),
     );
+
+    const invalidVisualAction = await client.callTool({
+      name: 'visual_control_action',
+      arguments: {
+        session_id: visualStartData.data.session_id,
+        actions: [{ type: 'tap', x: 1_000, y: 200 }],
+      },
+    });
+    assert.equal(invalidVisualAction.isError, true);
 
     const visualStop = await client.callTool({
       name: 'visual_control_stop',
