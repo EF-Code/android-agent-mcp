@@ -442,7 +442,7 @@ export class AndroidDeviceService {
     const actionForeground = await this.requireAllowedForeground('semantic tap before action');
     assertSameForeground(before.foreground, actionForeground, 'the semantic tap');
     await this.input.tap(serial, match.node.center.x, match.node.center.y);
-    await this.stabilize();
+    await this.stabilize(verifyChange ? STARTUP_WAIT_MS : 0);
     const after = verifyChange ? await this.captureUi() : null;
     const afterPixelSha256 = verifyPixels ? await this.pixelDigest() : null;
     return { before, after, nodeId: match.node.nodeId, beforePixelSha256, afterPixelSha256 };
@@ -453,6 +453,7 @@ export class AndroidDeviceService {
     y: number,
     verifyChange: boolean,
     verifyPixels = false,
+    settleMs?: number,
   ): Promise<ActionObservation> {
     const serial = await this.selectedSerial();
     await this.requireAllowedForeground('screen tap');
@@ -475,7 +476,7 @@ export class AndroidDeviceService {
     const beforePixelSha256 = verifyPixels ? await this.pixelDigest() : null;
     await this.requireAllowedForeground('screen tap before action');
     await this.input.tap(serial, x, y);
-    await this.stabilize();
+    await this.stabilize(settleMs ?? (verifyChange ? STARTUP_WAIT_MS : 0));
     const after = verifyChange ? await this.captureUi() : null;
     const afterPixelSha256 = verifyPixels ? await this.pixelDigest() : null;
     return { before, after, beforePixelSha256, afterPixelSha256 };
@@ -490,6 +491,7 @@ export class AndroidDeviceService {
     durationMs?: number;
     verifyChange: boolean;
     verifyPixels?: boolean;
+    settleMs?: number;
   }): Promise<ActionObservation> {
     const serial = await this.selectedSerial();
     await this.requireAllowedForeground('screen swipe');
@@ -562,7 +564,7 @@ export class AndroidDeviceService {
       endY!,
       validateDuration(options.durationMs ?? 300, 'durationMs', 30_000),
     );
-    await this.stabilize();
+    await this.stabilize(options.settleMs ?? (options.verifyChange ? STARTUP_WAIT_MS : 0));
     const after = options.verifyChange ? await this.captureUi() : null;
     const afterPixelSha256 = options.verifyPixels === true ? await this.pixelDigest() : null;
     return { before, after, beforePixelSha256, afterPixelSha256 };
@@ -618,6 +620,7 @@ export class AndroidDeviceService {
     durationMs: number,
     verifyChange = true,
     verifyPixels = false,
+    settleMs?: number,
   ): Promise<ActionObservation> {
     const serial = await this.selectedSerial();
     await this.requireAllowedForeground('screen long press');
@@ -638,7 +641,7 @@ export class AndroidDeviceService {
     const beforePixelSha256 = verifyPixels ? await this.pixelDigest() : null;
     await this.requireAllowedForeground('screen long press before action');
     await this.input.longPress(serial, x, y, validateDuration(durationMs, 'durationMs', 30_000));
-    await this.stabilize();
+    await this.stabilize(settleMs ?? (verifyChange ? STARTUP_WAIT_MS : 0));
     const after = verifyChange ? await this.captureUi() : null;
     const afterPixelSha256 = verifyPixels ? await this.pixelDigest() : null;
     return { before, after, beforePixelSha256, afterPixelSha256 };
@@ -648,6 +651,7 @@ export class AndroidDeviceService {
     key: AllowedKey,
     verifyChange = true,
     verifyPixels = false,
+    settleMs?: number,
   ): Promise<ActionObservation> {
     const serial = await this.selectedSerial();
     await this.requireAllowedForeground('key press');
@@ -655,7 +659,7 @@ export class AndroidDeviceService {
     const beforePixelSha256 = verifyPixels ? await this.pixelDigest() : null;
     await this.requireAllowedForeground('key press before action');
     await this.input.key(serial, key);
-    await this.stabilize();
+    await this.stabilize(settleMs ?? (verifyChange ? STARTUP_WAIT_MS : 0));
     const after = verifyChange ? await this.captureUi() : null;
     const afterPixelSha256 = verifyPixels ? await this.pixelDigest() : null;
     return { before, after, beforePixelSha256, afterPixelSha256 };

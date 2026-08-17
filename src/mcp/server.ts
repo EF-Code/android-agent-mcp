@@ -540,8 +540,9 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
         const result = await service.tapCoordinates(
           args.x,
           args.y,
-          args.verify_change ?? true,
+          args.verify_change ?? false,
           args.verify_pixels ?? false,
+          args.settle_ms,
         );
         return jsonContent(
           ok(verificationData(result), {
@@ -573,8 +574,9 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
           ...(args.end_y === undefined ? {} : { endY: args.end_y }),
           ...(args.direction === undefined ? {} : { direction: args.direction }),
           ...(args.duration_ms === undefined ? {} : { durationMs: args.duration_ms }),
-          verifyChange: args.verify_change ?? true,
+          verifyChange: args.verify_change ?? false,
           verifyPixels: args.verify_pixels ?? false,
+          ...(args.settle_ms === undefined ? {} : { settleMs: args.settle_ms }),
         };
         const result = await service.swipe(options);
         return jsonContent(
@@ -655,8 +657,9 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
           args.x,
           args.y,
           args.duration_ms ?? 750,
-          args.verify_change ?? true,
+          args.verify_change ?? false,
           args.verify_pixels ?? false,
+          args.settle_ms,
         );
         return jsonContent(
           ok(
@@ -691,8 +694,9 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
         const serial = await service.selectedSerial();
         const result = await service.pressKey(
           args.key as AllowedKey,
-          args.verify_change ?? true,
+          args.verify_change ?? false,
           args.verify_pixels ?? false,
+          args.settle_ms,
         );
         return jsonContent(
           ok(
