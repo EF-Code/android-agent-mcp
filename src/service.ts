@@ -494,8 +494,10 @@ export class AndroidDeviceService {
     settleMs?: number,
   ): Promise<ActionObservation> {
     const serial = await this.selectedSerial({ checkConnection: false });
-    await this.requireAllowedForeground('screen tap', serial);
-    const geometry = await this.screenGeometry(serial);
+    const [, geometry] = await Promise.all([
+      this.requireAllowedForeground('screen tap', serial),
+      this.screenGeometry(serial),
+    ]);
     validateCoordinate(x, 'x');
     validateCoordinate(y, 'y');
     if (geometry.width > 0 && (x >= geometry.width || y >= geometry.height)) {
@@ -530,8 +532,10 @@ export class AndroidDeviceService {
     settleMs?: number;
   }): Promise<ActionObservation> {
     const serial = await this.selectedSerial({ checkConnection: false });
-    await this.requireAllowedForeground('screen swipe', serial);
-    const geometry = await this.screenGeometry(serial);
+    const [, geometry] = await Promise.all([
+      this.requireAllowedForeground('screen swipe', serial),
+      this.screenGeometry(serial),
+    ]);
     const width = geometry.width;
     const height = geometry.height;
     let startX = options.startX;
@@ -615,8 +619,10 @@ export class AndroidDeviceService {
     settleMs?: number;
   }): Promise<ActionObservation> {
     const serial = await this.selectedSerial({ checkConnection: false });
-    await this.requireAllowedForeground('screen input sequence', serial);
-    const geometry = await this.screenGeometry(serial);
+    const [, geometry] = await Promise.all([
+      this.requireAllowedForeground('screen input sequence', serial),
+      this.screenGeometry(serial),
+    ]);
     const assertInBounds = (x: number, y: number): void => {
       validateCoordinate(x, 'coordinate');
       validateCoordinate(y, 'coordinate');
@@ -658,8 +664,10 @@ export class AndroidDeviceService {
     settleMs?: number,
   ): Promise<ActionObservation> {
     const serial = await this.selectedSerial({ checkConnection: false });
-    await this.requireAllowedForeground('screen long press', serial);
-    const geometry = await this.screenGeometry(serial);
+    const [, geometry] = await Promise.all([
+      this.requireAllowedForeground('screen long press', serial),
+      this.screenGeometry(serial),
+    ]);
     if (geometry.width > 0 && (x >= geometry.width || y >= geometry.height)) {
       throw new AppError(
         ErrorCode.InvalidCoordinates,
