@@ -163,6 +163,19 @@ test('returns image content and structured errors over MCP stdio', async () => {
     assert.ok(
       visualActionContent.some((item) => item.type === 'image' && item.mimeType === 'image/png'),
     );
+    const visualActionText = visualActionContent.find((item) => item.type === 'text')?.text ?? '';
+    const visualActionData = JSON.parse(visualActionText) as {
+      data: {
+        action_count: number;
+        changed: boolean;
+        elapsed_ms: number;
+        wait_elapsed_ms: number;
+      };
+    };
+    assert.equal(visualActionData.data.action_count, 2);
+    assert.equal(visualActionData.data.changed, false);
+    assert.equal(typeof visualActionData.data.elapsed_ms, 'number');
+    assert.equal(typeof visualActionData.data.wait_elapsed_ms, 'number');
 
     const invalidVisualAction = await client.callTool({
       name: 'visual_control_action',
