@@ -119,6 +119,51 @@ test('returns image content and structured errors over MCP stdio', async () => {
     });
     assert.notEqual(sequence.isError, true);
 
+    const visualStart = await client.callTool({
+      name: 'visual_control_start',
+      arguments: {},
+    });
+    assert.notEqual(visualStart.isError, true);
+    const visualStartContent = visualStart.content as Array<{
+      type: string;
+      mimeType?: string;
+      text?: string;
+    }>;
+    assert.ok(
+      visualStartContent.some((item) => item.type === 'image' && item.mimeType === 'image/png'),
+    );
+    const visualStartText = visualStartContent.find((item) => item.type === 'text')?.text ?? '';
+    const visualStartData = JSON.parse(visualStartText) as {
+      data: { session_id: string; coordinate_space: string };
+    };
+    assert.equal(visualStartData.data.coordinate_space, 'normalized_1000');
+
+    const visualAction = await client.callTool({
+      name: 'visual_control_action',
+      arguments: {
+        session_id: visualStartData.data.session_id,
+        actions: [
+          { type: 'tap', x: 100, y: 200 },
+          { type: 'tap', x: 300, y: 200 },
+        ],
+      },
+    });
+    assert.notEqual(visualAction.isError, true);
+    const visualActionContent = visualAction.content as Array<{
+      type: string;
+      mimeType?: string;
+      text?: string;
+    }>;
+    assert.ok(
+      visualActionContent.some((item) => item.type === 'image' && item.mimeType === 'image/png'),
+    );
+
+    const visualStop = await client.callTool({
+      name: 'visual_control_stop',
+      arguments: { session_id: visualStartData.data.session_id },
+    });
+    assert.equal(visualStop.isError, false);
+
     const invalidResult = await client.callTool({
       name: 'screen_capture',
       arguments: { save_to_evidence: 'yes' },

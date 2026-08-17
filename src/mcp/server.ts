@@ -29,6 +29,9 @@ import {
   permissionSetSchema,
   serialSchema,
   inputSequenceSchema,
+  visualControlActionSchema,
+  visualControlStartSchema,
+  visualControlStopSchema,
   swipeSchema,
   textTypeSchema,
   uiDumpSchema,
@@ -36,7 +39,12 @@ import {
   uiTapSchema,
   waitForUiSchema,
 } from './schemas.js';
-import { AndroidDeviceService, type ActionObservation } from '../service.js';
+import {
+  AndroidDeviceService,
+  type ActionObservation,
+  type VisualControlActionResult,
+  type VisualControlStartResult,
+} from '../service.js';
 import type { UiSelector } from '../ui/types.js';
 import type { AllowedKey, InputSequenceAction } from '../adb/input.js';
 
@@ -107,6 +115,28 @@ async function actionContent(
     },
   );
   return screenshot === null ? jsonContent(response) : imageContent(response, screenshot.png);
+}
+
+function visualFrameContent(
+  result: VisualControlStartResult | VisualControlActionResult,
+  data: Record<string, unknown>,
+) {
+  const response = ok(
+    {
+      ...data,
+      session_id: result.sessionId,
+      serial: result.serial,
+      coordinate_space: result.coordinateSpace,
+      screen: {
+        width: result.screenshot.width,
+        height: result.screenshot.height,
+        sha256: result.screenshot.sha256,
+      },
+      foreground: result.foreground,
+    },
+    { deviceSerial: result.serial },
+  );
+  return imageContent(response, result.screenshot.png);
 }
 
 function autoMirrorWarnings(service: AndroidDeviceService): Array<{
@@ -603,6 +633,93 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
         };
         const result = await service.swipe(options);
         return await actionContent(service, serial, result, {}, args.include_screenshot === true);
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  registerTool(
+    server,
+    service,
+    'visual_control_start',
+    {
+      description:
+        'Start a low-latency visual control session and return the initial screen frame. Use this for games, canvases, and other screenshot-driven surfaces.',
+      inputSchema: visualControlStartSchema,
+    },
+    async (args) => {
+      try {
+        const result = await service.visualControlStart(args.coordinate_space ?? 'normalized_1000');
+        return visualFrameContent(result, { started_at: result.startedAt });
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  registerTool(
+    server,
+    service,
+    'visual_control_action',
+    {
+      description:
+        'Execute bounded visual actions and return the next screenshot in the same response. Prefer normalized 0-999 coordinates and avoid separate screen_capture calls.',
+      inputSchema: visualControlActionSchema,
+    },
+    async (args) => {
+      try {
+        const actions: InputSequenceAction[] = args.actions.map((action) => {
+          if (action.type === 'tap') return { type: 'tap', x: action.x, y: action.y };
+          if (action.type === 'key') return { type: 'key', key: action.key };
+          return {
+            type: 'swipe',
+            startX: action.start_x,
+            startY: action.start_y,
+            endX: action.end_x,
+            endY: action.end_y,
+            durationMs: action.duration_ms,
+          };
+        });
+        const result = await service.visualControlAction({
+          sessionId: args.session_id,
+          actions,
+          ...(args.coordinate_space === undefined
+            ? {}
+            : { coordinateSpace: args.coordinate_space }),
+          ...(args.inter_action_delay_ms === undefined
+            ? {}
+            : { interActionDelayMs: args.inter_action_delay_ms }),
+          ...(args.settle_ms === undefined ? {} : { settleMs: args.settle_ms }),
+          ...(args.wait_for_change_ms === undefined
+            ? {}
+            : { waitForChangeMs: args.wait_for_change_ms }),
+          ...(args.stable_ms === undefined ? {} : { stableMs: args.stable_ms }),
+          ...(args.poll_ms === undefined ? {} : { pollMs: args.poll_ms }),
+        });
+        return visualFrameContent(result, {
+          action_count: result.actionCount,
+          changed: result.changed,
+          wait_elapsed_ms: result.waitElapsedMs,
+          elapsed_ms: result.elapsedMs,
+        });
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  registerTool(
+    server,
+    service,
+    'visual_control_stop',
+    {
+      description: 'Stop a visual control session and release its retained device state.',
+      inputSchema: visualControlStopSchema,
+    },
+    async (args) => {
+      try {
+        return jsonContent(ok(service.visualControlStop(args.session_id)));
       } catch (error) {
         return toolError(error);
       }
