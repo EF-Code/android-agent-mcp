@@ -69,7 +69,11 @@ export function buildInputSequenceScript(
       return `input swipe ${action.startX} ${action.startY} ${action.endX} ${action.endY} ${action.durationMs}`;
     }
     const key = action.key as string;
-    if (!(key in KEY_CODES) || key === 'power' || key === 'wake') {
+    if (
+      !Object.prototype.hasOwnProperty.call(KEY_CODES, key) ||
+      key === 'power' ||
+      key === 'wake'
+    ) {
       throw new AppError(ErrorCode.InvalidInput, 'Input sequence key is not allowlisted.', {
         details: { key },
       });
@@ -167,7 +171,7 @@ export class AdbInput {
   }
 
   async key(serial: string, key: AllowedKey, allowPower = false): Promise<void> {
-    if (!(key in KEY_CODES)) {
+    if (!Object.prototype.hasOwnProperty.call(KEY_CODES, key)) {
       throw new AppError(ErrorCode.InvalidInput, 'Android key is not allowlisted.', {
         details: { key },
       });

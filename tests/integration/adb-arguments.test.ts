@@ -107,6 +107,7 @@ test('batches safe input actions into one generated remote script', async () => 
     'input tap 10 20; sleep 0.050; input swipe 10 20 30 40 100; sleep 0.050; input keyevent 4',
   ]);
   assert.equal(buildInputSequenceScript([{ type: 'tap', x: 1, y: 2 }]), 'input tap 1 2');
+  assert.throws(() => buildInputSequenceScript([{ type: 'key', key: 'toString' } as never]));
 });
 
 test('uses direct ADB argument arrays for screenshots and UIAutomator', async () => {
