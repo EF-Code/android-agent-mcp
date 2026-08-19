@@ -30,7 +30,9 @@ Check that the device is authorized and unlocked. UIAutomator may be empty or in
 
 ## Actions feel slow
 
-For visual apps, games, and custom canvases, avoid calling `ui_dump`, `ui_find`, `screen_capture`, or `wait_for_ui` between every input. Start one `visual_control_start` session, then use `visual_control_action` with normalized `0-999` coordinates; each action returns the next screenshot in the same response. Set `wait_for_change_ms` only when the app needs a bounded transition wait. Use `screen_input_sequence` for one-off native-pixel batches. Semantic `ui_tap` remains intentionally slower because it resolves and verifies the accessibility hierarchy.
+For visual apps, games, and custom canvases, avoid calling `ui_dump`, `ui_find`, `screen_capture`, or `wait_for_ui` between every input. Start one `visual_control_start` session, keep its default JPEG frame format, then use `visual_control_action` with normalized `0-999` coordinates; each action returns the next frame in the same response. Batch a whole move and prefer one swipe for drag-based boards. Keep `settle_ms`, `wait_for_change_ms`, and `stable_ms` at zero unless the app genuinely needs a transition or opponent-response window. Use `screen_input_sequence` for one-off native-pixel batches. Semantic `ui_tap` remains intentionally slower because it resolves and verifies the accessibility hierarchy.
+
+Run `npm run benchmark:visual -- --iterations 10` with a non-sensitive app in the foreground. The output separates preflight, input, settle, observation, and postflight time. If device-side p95 is low but the host still takes many seconds per move, the remaining delay is in image upload, model reasoning, or the harness's tool-call scheduling rather than ADB input.
 
 ## `scrcpy` is missing or does not open
 
