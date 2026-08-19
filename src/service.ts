@@ -105,6 +105,8 @@ interface VisualControlSessionState {
   deviceSessionId: string;
   coordinateSpace: VisualCoordinateSpace;
   lastScreenshotSha256: string;
+  screenWidth: number;
+  screenHeight: number;
   startedAt: string;
 }
 
@@ -525,6 +527,8 @@ export class AndroidDeviceService {
       deviceSessionId: selected.sessionId,
       coordinateSpace,
       lastScreenshotSha256: frame.screenshot.sha256,
+      screenWidth: frame.screenshot.width,
+      screenHeight: frame.screenshot.height,
       startedAt,
     });
     return { sessionId, serial, coordinateSpace, startedAt, ...frame };
@@ -543,10 +547,8 @@ export class AndroidDeviceService {
     const started = performance.now();
     const { state, serial } = await this.requireVisualControlSession(options.sessionId);
     const coordinateSpace = options.coordinateSpace ?? state.coordinateSpace;
-    const [, geometry] = await Promise.all([
-      this.requireAllowedForeground('visual control action', serial),
-      this.screenGeometry(serial),
-    ]);
+    await this.requireAllowedForeground('visual control action', serial);
+    const geometry = { width: state.screenWidth, height: state.screenHeight };
     const actions = mapVisualInputActions(
       options.actions,
       coordinateSpace,
@@ -593,6 +595,8 @@ export class AndroidDeviceService {
     );
     const foreground = await this.requireCaptureForeground('visual control observation', serial);
     state.lastScreenshotSha256 = waited.screenshot.sha256;
+    state.screenWidth = waited.screenshot.width;
+    state.screenHeight = waited.screenshot.height;
     return {
       sessionId: options.sessionId,
       serial,
