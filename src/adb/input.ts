@@ -86,6 +86,25 @@ export function buildInputSequenceScript(
   return commands.join(separator);
 }
 
+function quoteRemoteShellScript(script: string): string {
+  if (script.includes("'")) {
+    throw new AppError(
+      ErrorCode.InvalidInput,
+      'Generated input sequence contains an unsupported shell quote.',
+    );
+  }
+  return `'${script}'`;
+}
+
+function assertInputSequenceOutput(stdout: Buffer, stderr: Buffer): void {
+  const diagnostic = Buffer.concat([stdout, stderr]).toString('utf8').trim();
+  if (!/(?:^|\n)Usage: input\b/u.test(diagnostic)) return;
+  throw new AppError(ErrorCode.CommandFailed, 'Android rejected the generated input sequence.', {
+    retryable: true,
+    details: { diagnostic: diagnostic.slice(0, 2_000) },
+  });
+}
+
 export function encodeSafeAsciiText(value: string): string {
   if (value.length === 0 || value.length > 1_024) {
     throw new AppError(
@@ -160,7 +179,28 @@ export class AdbInput {
     interActionDelayMs = 0,
   ): Promise<void> {
     const script = buildInputSequenceScript(actions, interActionDelayMs);
-    await this.adb.shell(serial, ['sh', '-c', script]);
+    const action = actions.length === 1 && interActionDelayMs === 0 ? actions[0] : undefined;
+    if (action?.type === 'tap') {
+      await this.tap(serial, action.x, action.y);
+      return;
+    }
+    if (action?.type === 'swipe') {
+      await this.swipe(
+        serial,
+        action.startX,
+        action.startY,
+        action.endX,
+        action.endY,
+        action.durationMs,
+      );
+      return;
+    }
+    if (action?.type === 'key') {
+      await this.key(serial, action.key);
+      return;
+    }
+    const output = await this.adb.shell(serial, ['sh', '-c', quoteRemoteShellScript(script)]);
+    assertInputSequenceOutput(output.stdout, output.stderr);
   }
 
   async longPress(serial: string, x: number, y: number, durationMs: number): Promise<void> {
