@@ -130,6 +130,24 @@ test(
         await client.callTool({ name: 'visual_control_start', arguments: {} }),
       ) as { session_id: string; coordinate_space: string };
       assert.equal(visualSession.coordinate_space, 'normalized_1000');
+      const visualAction = dataFrom(
+        await client.callTool({
+          name: 'visual_control_action',
+          arguments: {
+            session_id: visualSession.session_id,
+            actions: [
+              { type: 'key', key: 'volume_up' },
+              { type: 'key', key: 'volume_down' },
+            ],
+            inter_action_delay_ms: 75,
+            settle_ms: 100,
+            wait_for_change_ms: 2_000,
+          },
+        }),
+      ) as { action_count: number; changed: boolean; elapsed_ms: number };
+      assert.equal(visualAction.action_count, 2);
+      assert.equal(visualAction.changed, true);
+      assert.ok(visualAction.elapsed_ms < 5_000);
       dataFrom(
         await client.callTool({
           name: 'visual_control_stop',
