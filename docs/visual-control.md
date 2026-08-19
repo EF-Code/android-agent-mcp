@@ -8,7 +8,7 @@ The design follows the continuous frame → structured action → ADB → next-f
 
 1. Select one authorized device with `device_select` when needed.
 2. Call `visual_control_start`. The response contains an initial frame, a session ID, display dimensions, MIME type, and the default coordinate space. Visual sessions prefer Android's JPEG capture path and fall back to PNG automatically; pass `frame_format: "png"` only when lossless pixels are required.
-3. Call `visual_control_action` for each visual decision. The server dispatches a bounded action sequence and returns the next frame in the same MCP response.
+3. Call `visual_control_action` for each visual decision. The server checks the session-pinned foreground package and dispatches the bounded action in one device command, then returns a frame plus the post-action foreground state in one observation command.
 4. Call `visual_control_stop` when the visual task is complete.
 
 Do not call `screen_capture` between visual actions. The image returned by `visual_control_action` is the observation for the next model decision.
@@ -43,7 +43,14 @@ With one authorized device and a non-sensitive app in the foreground, run:
 npm run benchmark:visual -- --iterations 10
 ```
 
-The benchmark uses one reversible volume-up/volume-down batch, performs an unmeasured warmup, and prints p50/p95 action-to-frame latency plus phase timings. It does not measure model vision or reasoning. Compare JPEG and PNG directly when diagnosing a device:
+The benchmark uses reversible volume keys, performs an unmeasured warmup, and prints p50/p95 action-to-frame latency plus phase timings. It does not measure model vision or reasoning. Use one action per sample to approximate a chess swipe, or the default two-action batch to approximate source/destination taps:
+
+```sh
+npm run benchmark:visual -- --iterations 10 --actions 1
+npm run benchmark:visual -- --iterations 10 --actions 2
+```
+
+Compare JPEG and PNG directly when diagnosing a device:
 
 ```zsh
 npm run benchmark:visual -- --iterations 10 --frame-format jpeg
