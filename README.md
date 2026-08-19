@@ -191,7 +191,7 @@ For a two-tap visual move inside a session, prefer one call rather than two mode
 }
 ```
 
-The visual session accepts taps, swipes, and allowlisted non-sensitive keys. It returns an image plus a compact JSON observation and phase timings after every action. Stop it with `visual_control_stop` when finished. Use `screen_input_sequence` for one-off native-pixel batches when a persistent visual loop is unnecessary. Run `npm run benchmark:visual -- --iterations 10` to measure the connected phone's action-to-frame path separately from model latency.
+The visual session accepts taps, swipes, and allowlisted non-sensitive keys. It guards the foreground package in the same device command as each action, then returns an image plus compact JSON and phase timings from one observation command. Stop it with `visual_control_stop` when finished. Use `screen_input_sequence` for one-off native-pixel batches when a persistent visual loop is unnecessary. Run `npm run benchmark:visual -- --iterations 10 --actions 1` to measure a chess-like single-action path separately from model latency.
 
 If the selected phone disconnects or becomes unauthorized, the server invalidates retained UI state and requires an explicit `device_select` again after reconnecting, even when the serial is unchanged.
 
