@@ -175,12 +175,23 @@ test('returns image content and structured errors over MCP stdio', async () => {
         changed: boolean;
         elapsed_ms: number;
         wait_elapsed_ms: number;
+        timing_ms: {
+          preflight: number;
+          input: number;
+          settle: number;
+          observation: number;
+          postflight: number;
+        };
       };
     };
     assert.equal(visualActionData.data.action_count, 2);
     assert.equal(visualActionData.data.changed, false);
     assert.equal(typeof visualActionData.data.elapsed_ms, 'number');
     assert.equal(typeof visualActionData.data.wait_elapsed_ms, 'number');
+    assert.equal(typeof visualActionData.data.timing_ms.preflight, 'number');
+    assert.equal(typeof visualActionData.data.timing_ms.input, 'number');
+    assert.equal(typeof visualActionData.data.timing_ms.observation, 'number');
+    assert.equal(typeof visualActionData.data.timing_ms.postflight, 'number');
 
     const invalidVisualAction = await client.callTool({
       name: 'visual_control_action',

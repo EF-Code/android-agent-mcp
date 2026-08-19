@@ -101,6 +101,13 @@ export interface VisualControlActionResult extends VisualControlFrame {
   changed: boolean;
   waitElapsedMs: number;
   elapsedMs: number;
+  timingMs: {
+    preflight: number;
+    input: number;
+    settle: number;
+    observation: number;
+    postflight: number;
+  };
 }
 
 interface VisualControlSessionState {
@@ -559,7 +566,9 @@ export class AndroidDeviceService {
     const started = performance.now();
     const { state, serial } = await this.requireVisualControlSession(options.sessionId);
     const coordinateSpace = options.coordinateSpace ?? state.coordinateSpace;
+    const preflightStarted = performance.now();
     await this.requireAllowedForeground('visual control action', serial);
+    const preflightMs = Math.round(performance.now() - preflightStarted);
     const geometry = { width: state.screenWidth, height: state.screenHeight };
     const actions = mapVisualInputActions(
       options.actions,
@@ -596,8 +605,12 @@ export class AndroidDeviceService {
         details: { pollMs },
       });
     }
+    const inputStarted = performance.now();
     await this.input.sequence(serial, actions, options.interActionDelayMs ?? 0);
+    const inputMs = Math.round(performance.now() - inputStarted);
+    const settleStarted = performance.now();
     await this.stabilize(settleMs);
+    const settleElapsedMs = Math.round(performance.now() - settleStarted);
     const waited = await this.waitForVisualChange(
       serial,
       state.lastScreenshotSha256,
@@ -606,7 +619,9 @@ export class AndroidDeviceService {
       stableMs,
       pollMs,
     );
+    const postflightStarted = performance.now();
     const foreground = await this.requireCaptureForeground('visual control observation', serial);
+    const postflightMs = Math.round(performance.now() - postflightStarted);
     state.lastScreenshotSha256 = waited.screenshot.sha256;
     state.screenWidth = waited.screenshot.width;
     state.screenHeight = waited.screenshot.height;
@@ -618,6 +633,13 @@ export class AndroidDeviceService {
       changed: waited.changed,
       waitElapsedMs: waited.elapsedMs,
       elapsedMs: Math.round(performance.now() - started),
+      timingMs: {
+        preflight: preflightMs,
+        input: inputMs,
+        settle: settleElapsedMs,
+        observation: waited.elapsedMs,
+        postflight: postflightMs,
+      },
       screenshot: waited.screenshot,
       foreground,
     };
