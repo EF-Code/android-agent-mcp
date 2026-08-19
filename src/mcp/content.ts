@@ -1,6 +1,7 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 import type { ErrorEnvelope, ResultEnvelope, SuccessEnvelope } from '../types.js';
+import type { ScreenshotMimeType } from '../adb/screenshots.js';
 
 export function jsonContent(result: ResultEnvelope<unknown>): CallToolResult {
   const text = JSON.stringify(result, null, 2);
@@ -11,10 +12,14 @@ export function jsonContent(result: ResultEnvelope<unknown>): CallToolResult {
   };
 }
 
-export function imageContent(result: SuccessEnvelope<unknown>, png: Buffer): CallToolResult {
+export function imageContent(
+  result: SuccessEnvelope<unknown>,
+  data: Buffer,
+  mimeType: ScreenshotMimeType = 'image/png',
+): CallToolResult {
   return {
     content: [
-      { type: 'image', data: png.toString('base64'), mimeType: 'image/png' },
+      { type: 'image', data: data.toString('base64'), mimeType },
       { type: 'text', text: JSON.stringify(result, null, 2) },
     ],
     structuredContent: result as unknown as Record<string, unknown>,

@@ -12,7 +12,7 @@ Implemented and locally verified:
 - Automated unit, integration, protocol, and scrcpy tests, plus a separate opt-in physical-device smoke test
 - ADB/scrcpy adapters with injectable command runners
 - Device discovery, explicit selection, screenshots, UIAutomator parsing, semantic selectors, input, app inspection, logcat, scrcpy ownership, and evidence sessions
-- Low-latency native input sequences, cached display geometry, concurrent action preflight, optional post-action screenshots, and stateful visual action-observation sessions
+- Low-latency quoted input batches, session-pinned geometry, bounded foreground probes, JPEG visual frames with PNG fallback, phase telemetry, and stateful action-observation sessions
 - Path-restricted APK installation and approval-gated mutations
 
 Physical-device validation is opt-in and remains a separate gate. The full MCP stdio path has been validated on an authorized Samsung SM-A075F: discovery, selection, device information, visible scrcpy, app launch, screenshot image content, UI dump/find/tap, bounded logcat, evidence completion, and owned-mirror shutdown.
@@ -80,13 +80,13 @@ node /absolute/path/to/android-agent-mcp/dist/index.js
 The easiest path for a published release is:
 
 ```zsh
-npx -y android-agent-mcp@0.4.0 setup
+npx -y android-agent-mcp@0.4.1 setup
 ```
 
 This downloads the package, detects supported hosts, and configures only the hosts whose commands are available. No repository checkout is required. For a reusable global installation:
 
 ```zsh
-npm install --global android-agent-mcp@0.4.0
+npm install --global android-agent-mcp@0.4.1
 android-agent-mcp setup
 ```
 
@@ -97,7 +97,7 @@ Alternatively, let an MCP client download a pinned release when it starts the se
 ```json
 {
   "command": "npx",
-  "args": ["--yes", "android-agent-mcp@0.4.0"]
+  "args": ["--yes", "android-agent-mcp@0.4.1"]
 }
 ```
 
@@ -170,8 +170,8 @@ Visual control sessions follow the same frame → structured action → ADB → 
 2. Call `device_select` when selection is not unambiguous.
 3. Call `device_info` and confirm the target.
 4. For semantic controls, use `ui_dump`/`ui_find` followed by `ui_tap`.
-5. For games, canvases, video, and other visual surfaces, start one `visual_control_start` session. It returns the initial frame and defaults to Google-style normalized `0-999` coordinates.
-6. Use `visual_control_action` for every visual step. It batches taps/swipes, executes them without UI hierarchy verification, and returns the next screenshot in the same response. Do not call `screen_capture` between visual actions. Use `wait_for_change_ms` only when the app needs a bounded transition wait.
+5. For games, canvases, video, and other visual surfaces, start one `visual_control_start` session. It returns the initial frame, prefers fast JPEG capture with automatic PNG fallback, and defaults to Google-style normalized `0-999` coordinates.
+6. Use `visual_control_action` for every visual step. It batches a complete move, executes it without UI hierarchy verification, and returns the next frame in the same response. Do not call `screen_capture` between visual actions. Prefer one swipe for drag-based boards. Keep wait options at zero unless the app needs a bounded transition or opponent-response window.
 7. General packages are available by default; honor configured sensitive-package blocks.
 8. Mutating tools remain fail-closed unless the host explicitly uses `approvalMode: "allow"`; keep Codex write approval enabled as an additional client control.
 9. Selecting a device makes one best-effort attempt to start the visible scrcpy mirror unless `mirror.autoStart` is disabled. A scrcpy failure is returned as a warning and never blocks ADB tools. After `mirror_stop`, use `mirror_start` to reopen it explicitly.
@@ -187,11 +187,11 @@ For a two-tap visual move inside a session, prefer one call rather than two mode
     { "type": "tap", "x": 458, "y": 700 }
   ],
   "coordinate_space": "normalized_1000",
-  "wait_for_change_ms": 1500
+  "wait_for_change_ms": 0
 }
 ```
 
-The visual session accepts taps, swipes, and allowlisted non-sensitive keys. It returns an image plus a compact JSON observation after every action. Stop it with `visual_control_stop` when finished. Use `screen_input_sequence` for one-off native-pixel batches when a persistent visual loop is unnecessary.
+The visual session accepts taps, swipes, and allowlisted non-sensitive keys. It guards the foreground package in the same device command as each action, then returns an image plus compact JSON and phase timings from one observation command. Stop it with `visual_control_stop` when finished. Use `screen_input_sequence` for one-off native-pixel batches when a persistent visual loop is unnecessary. Run `npm run benchmark:visual -- --iterations 10 --actions 1` to measure a chess-like single-action path separately from model latency.
 
 If the selected phone disconnects or becomes unauthorized, the server invalidates retained UI state and requires an explicit `device_select` again after reconnecting, even when the serial is unchanged.
 
@@ -208,6 +208,8 @@ npm run build
 npm run verify
 npm pack --dry-run
 npm audit --omit=dev
+# With an authorized device and non-sensitive foreground app:
+npm run benchmark:visual -- --iterations 10
 ```
 
 The automated suite uses fake/injectable command boundaries and a child-process MCP client. It does not require a phone and does not install packages or alter device state.

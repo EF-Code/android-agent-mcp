@@ -8,7 +8,9 @@ import { AdbPackages } from '../../src/adb/packages.js';
 import { AdbProperties } from '../../src/adb/properties.js';
 import { AdbScreenshots } from '../../src/adb/screenshots.js';
 import { AdbUiAutomator } from '../../src/adb/ui-automator.js';
-import { parseForegroundActivity } from '../../src/adb/foreground.js';
+import { AppError } from '../../src/errors/app-error.js';
+import { ErrorCode } from '../../src/errors/codes.js';
+import { AdbForeground, parseForegroundActivity } from '../../src/adb/foreground.js';
 import type { CommandOutput } from '../../src/types.js';
 
 function output(stdout: string | Buffer = ''): CommandOutput {
@@ -104,10 +106,88 @@ test('batches safe input actions into one generated remote script', async () => 
     'shell',
     'sh',
     '-c',
-    'input tap 10 20; sleep 0.050; input swipe 10 20 30 40 100; sleep 0.050; input keyevent 4',
+    "'input tap 10 20; sleep 0.050; input swipe 10 20 30 40 100; sleep 0.050; input keyevent 4'",
   ]);
   assert.equal(buildInputSequenceScript([{ type: 'tap', x: 1, y: 2 }]), 'input tap 1 2');
   assert.throws(() => buildInputSequenceScript([{ type: 'key', key: 'toString' } as never]));
+});
+
+test('uses direct ADB input arguments for a one-action sequence', async () => {
+  const runner = new RecordingRunner();
+  const adb = new AdbClient({
+    adbPath: 'adb',
+    defaultTimeoutMs: 5_000,
+    maxOutputBytes: 100_000,
+    runner,
+  });
+  await new AdbInput(adb).sequence('serial-1', [{ type: 'tap', x: 10, y: 20 }]);
+  assert.deepEqual(runner.calls[0]?.args, ['-s', 'serial-1', 'shell', 'input', 'tap', '10', '20']);
+});
+
+test('rejects Android input usage output instead of reporting false success', async () => {
+  const runner: CommandRunner = {
+    async run() {
+      return output('Usage: input [<source>] <command> [<arg>...]\n');
+    },
+  };
+  const adb = new AdbClient({
+    adbPath: 'adb',
+    defaultTimeoutMs: 5_000,
+    maxOutputBytes: 100_000,
+    runner,
+  });
+  await assert.rejects(
+    new AdbInput(adb).sequence('serial-1', [
+      { type: 'tap', x: 10, y: 20 },
+      { type: 'tap', x: 30, y: 40 },
+    ]),
+    (error: unknown) => error instanceof AppError && error.code === ErrorCode.CommandFailed,
+  );
+});
+
+test('guards visual input against foreground changes in the same remote command', async () => {
+  const runner = new RecordingRunner();
+  const adb = new AdbClient({
+    adbPath: 'adb',
+    defaultTimeoutMs: 5_000,
+    maxOutputBytes: 100_000,
+    runner,
+  });
+  await new AdbInput(adb).guardedSequence(
+    'serial-1',
+    [{ type: 'swipe', startX: 10, startY: 20, endX: 30, endY: 40, durationMs: 100 }],
+    'com.example.game',
+  );
+  const args = runner.calls[0]?.args ?? [];
+  assert.deepEqual(args.slice(0, 5), ['-s', 'serial-1', 'shell', 'sh', '-c']);
+  assert.match(args[5] ?? '', /current_package/u);
+  assert.match(args[5] ?? '', /com\.example\.game/u);
+  assert.match(args[5] ?? '', /input swipe 10 20 30 40 100/u);
+});
+
+test('rejects a guarded visual action when the device reports another package', async () => {
+  const runner: CommandRunner = {
+    async run() {
+      return output('__ANDROID_AGENT_MCP_FOREGROUND_MISMATCH__com.example.other\n');
+    },
+  };
+  const adb = new AdbClient({
+    adbPath: 'adb',
+    defaultTimeoutMs: 5_000,
+    maxOutputBytes: 100_000,
+    runner,
+  });
+  await assert.rejects(
+    new AdbInput(adb).guardedSequence(
+      'serial-1',
+      [{ type: 'tap', x: 10, y: 20 }],
+      'com.example.game',
+    ),
+    (error: unknown) =>
+      error instanceof AppError &&
+      error.code === ErrorCode.StaleUiSnapshot &&
+      error.details.currentPackage === 'com.example.other',
+  );
 });
 
 test('uses direct ADB argument arrays for screenshots and UIAutomator', async () => {
@@ -216,6 +296,34 @@ test('parses modern Android foreground activity records', () => {
   assert.deepEqual(foreground, {
     packageName: 'com.example.app',
     activity: '.MainActivity',
+    pid: null,
+  });
+});
+
+test('filters the focused window on-device before transferring foreground state', async () => {
+  const runner: CommandRunner = {
+    async run(executable, args) {
+      assert.equal(executable, 'adb');
+      assert.deepEqual(args, [
+        '-s',
+        'serial-5',
+        'shell',
+        'sh',
+        '-c',
+        '\'dumpsys window windows | grep -m 1 "mCurrentFocus=" || true\'',
+      ]);
+      return output('mCurrentFocus=Window{123 u0 com.example.app/com.example.app.MainActivity}\n');
+    },
+  };
+  const adb = new AdbClient({
+    adbPath: 'adb',
+    defaultTimeoutMs: 5_000,
+    maxOutputBytes: 100_000,
+    runner,
+  });
+  assert.deepEqual(await new AdbForeground(adb).read('serial-5'), {
+    packageName: 'com.example.app',
+    activity: 'com.example.app.MainActivity',
     pid: null,
   });
 });

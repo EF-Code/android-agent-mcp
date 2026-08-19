@@ -2,14 +2,18 @@ import { randomUUID } from 'node:crypto';
 
 import { AdbClient } from './adb/client.js';
 import { DeviceManager } from './adb/devices.js';
-import { AdbForeground } from './adb/foreground.js';
+import { AdbForeground, parseForegroundActivity } from './adb/foreground.js';
 import { AdbInput, type AllowedKey, type InputSequenceAction } from './adb/input.js';
 import { AdbInstaller } from './adb/installer.js';
 import { AdbLogcat, type LogCaptureOptions } from './adb/logcat.js';
 import { AdbPackages } from './adb/packages.js';
 import { AdbPermissions } from './adb/permissions.js';
 import { AdbProperties } from './adb/properties.js';
-import { AdbScreenshots, type Screenshot } from './adb/screenshots.js';
+import {
+  AdbScreenshots,
+  type EncodedScreenshot,
+  type VisualFrameFormat,
+} from './adb/screenshots.js';
 import { AdbUiAutomator } from './adb/ui-automator.js';
 import { EvidenceManager, type EvidenceSession } from './evidence/recorder.js';
 import { Policy } from './policy/policy.js';
@@ -78,7 +82,7 @@ export interface ActionObservation {
 }
 
 export interface VisualControlFrame {
-  screenshot: Screenshot;
+  screenshot: EncodedScreenshot;
   foreground: ForegroundApp;
 }
 
@@ -97,6 +101,13 @@ export interface VisualControlActionResult extends VisualControlFrame {
   changed: boolean;
   waitElapsedMs: number;
   elapsedMs: number;
+  timingMs: {
+    preflight: number;
+    input: number;
+    settle: number;
+    observation: number;
+    postflight: number;
+  };
 }
 
 interface VisualControlSessionState {
@@ -104,7 +115,11 @@ interface VisualControlSessionState {
   serial: string;
   deviceSessionId: string;
   coordinateSpace: VisualCoordinateSpace;
+  frameFormat: VisualFrameFormat;
+  foregroundPackage: string;
   lastScreenshotSha256: string;
+  screenWidth: number;
+  screenHeight: number;
   startedAt: string;
 }
 
@@ -379,6 +394,11 @@ export class AndroidDeviceService {
 
   async requireCaptureForeground(operation: string, serial?: string): Promise<ForegroundApp> {
     const foreground = await this.currentForeground(serial);
+    this.assertCaptureForeground(foreground, operation);
+    return foreground;
+  }
+
+  private assertCaptureForeground(foreground: ForegroundApp, operation: string): void {
     if (
       foreground.packageName === null ||
       !this.policy.isPackageAllowed(foreground.packageName) ||
@@ -389,6 +409,18 @@ export class AndroidDeviceService {
       );
     }
     this.policy.assertObservationAllowed(foreground, operation);
+  }
+
+  private async requireCapturedForeground(
+    output: string,
+    operation: string,
+    serial: string,
+  ): Promise<ForegroundApp> {
+    const foreground = parseForegroundActivity(output);
+    if (foreground.packageName === null) {
+      return this.requireCaptureForeground(operation, serial);
+    }
+    this.assertCaptureForeground(foreground, operation);
     return foreground;
   }
 
@@ -413,11 +445,19 @@ export class AndroidDeviceService {
     return { screenshot, rotation, foreground };
   }
 
-  private async captureVisualFrame(serial: string, operation: string): Promise<VisualControlFrame> {
+  private async captureVisualFrame(
+    serial: string,
+    operation: string,
+    frameFormat: VisualFrameFormat,
+  ): Promise<VisualControlFrame> {
     await this.requireCaptureForeground(`${operation} before capture`, serial);
-    const screenshot = await this.screenshots.capture(serial);
-    const foreground = await this.requireCaptureForeground(`${operation} after capture`, serial);
-    return { screenshot, foreground };
+    const observation = await this.screenshots.captureVisualObservation(serial, frameFormat);
+    const foreground = await this.requireCapturedForeground(
+      observation.foregroundOutput,
+      `${operation} after capture`,
+      serial,
+    );
+    return { screenshot: observation.screenshot, foreground };
   }
 
   private async requireVisualControlSession(
@@ -453,16 +493,29 @@ export class AndroidDeviceService {
   private async waitForVisualChange(
     serial: string,
     baselineSha256: string,
+    frameFormat: VisualFrameFormat,
     waitForChangeMs: number,
     stableMs: number,
     pollMs: number,
-  ): Promise<{ screenshot: Screenshot; changed: boolean; elapsedMs: number }> {
+  ): Promise<{
+    screenshot: EncodedScreenshot;
+    foreground: ForegroundApp;
+    changed: boolean;
+    elapsedMs: number;
+  }> {
     const started = performance.now();
-    let screenshot = await this.screenshots.capture(serial);
+    let observation = await this.screenshots.captureVisualObservation(serial, frameFormat);
+    let screenshot = observation.screenshot;
+    let foreground = await this.requireCapturedForeground(
+      observation.foregroundOutput,
+      'visual control observation',
+      serial,
+    );
     let changed = screenshot.sha256 !== baselineSha256;
     if (waitForChangeMs === 0 || (!changed && performance.now() - started >= waitForChangeMs)) {
       return {
         screenshot,
+        foreground,
         changed,
         elapsedMs: Math.round(performance.now() - started),
       };
@@ -470,12 +523,19 @@ export class AndroidDeviceService {
 
     while (!changed && performance.now() - started < waitForChangeMs) {
       await new Promise((resolve) => setTimeout(resolve, pollMs));
-      screenshot = await this.screenshots.capture(serial);
+      observation = await this.screenshots.captureVisualObservation(serial, frameFormat);
+      screenshot = observation.screenshot;
+      foreground = await this.requireCapturedForeground(
+        observation.foregroundOutput,
+        'visual control observation',
+        serial,
+      );
       changed = screenshot.sha256 !== baselineSha256;
     }
     if (!changed || stableMs === 0) {
       return {
         screenshot,
+        foreground,
         changed,
         elapsedMs: Math.round(performance.now() - started),
       };
@@ -485,7 +545,13 @@ export class AndroidDeviceService {
     while (performance.now() - started < waitForChangeMs) {
       if (performance.now() - stableSince >= stableMs) break;
       await new Promise((resolve) => setTimeout(resolve, pollMs));
-      const next = await this.screenshots.capture(serial);
+      observation = await this.screenshots.captureVisualObservation(serial, frameFormat);
+      const next = observation.screenshot;
+      foreground = await this.requireCapturedForeground(
+        observation.foregroundOutput,
+        'visual control observation',
+        serial,
+      );
       if (next.sha256 !== screenshot.sha256) {
         screenshot = next;
         stableSince = performance.now();
@@ -493,6 +559,7 @@ export class AndroidDeviceService {
     }
     return {
       screenshot,
+      foreground,
       changed,
       elapsedMs: Math.round(performance.now() - started),
     };
@@ -500,6 +567,7 @@ export class AndroidDeviceService {
 
   async visualControlStart(
     coordinateSpace: VisualCoordinateSpace = 'normalized_1000',
+    frameFormat: VisualFrameFormat = 'jpeg',
   ): Promise<VisualControlStartResult> {
     const serial = await this.selectedSerial();
     const selected = await this.devices.requireSelected({ checkConnection: false });
@@ -516,7 +584,7 @@ export class AndroidDeviceService {
         },
       );
     }
-    const frame = await this.captureVisualFrame(serial, 'visual control start');
+    const frame = await this.captureVisualFrame(serial, 'visual control start', frameFormat);
     const sessionId = randomUUID();
     const startedAt = new Date().toISOString();
     this.visualControlSessions.set(sessionId, {
@@ -524,7 +592,11 @@ export class AndroidDeviceService {
       serial,
       deviceSessionId: selected.sessionId,
       coordinateSpace,
+      frameFormat,
+      foregroundPackage: frame.foreground.packageName!,
       lastScreenshotSha256: frame.screenshot.sha256,
+      screenWidth: frame.screenshot.width,
+      screenHeight: frame.screenshot.height,
       startedAt,
     });
     return { sessionId, serial, coordinateSpace, startedAt, ...frame };
@@ -543,10 +615,8 @@ export class AndroidDeviceService {
     const started = performance.now();
     const { state, serial } = await this.requireVisualControlSession(options.sessionId);
     const coordinateSpace = options.coordinateSpace ?? state.coordinateSpace;
-    const [, geometry] = await Promise.all([
-      this.requireAllowedForeground('visual control action', serial),
-      this.screenGeometry(serial),
-    ]);
+    const preflightMs = 0;
+    const geometry = { width: state.screenWidth, height: state.screenHeight };
     const actions = mapVisualInputActions(
       options.actions,
       coordinateSpace,
@@ -582,17 +652,29 @@ export class AndroidDeviceService {
         details: { pollMs },
       });
     }
-    await this.input.sequence(serial, actions, options.interActionDelayMs ?? 0);
+    const inputStarted = performance.now();
+    await this.input.guardedSequence(
+      serial,
+      actions,
+      state.foregroundPackage,
+      options.interActionDelayMs ?? 0,
+    );
+    const inputMs = Math.round(performance.now() - inputStarted);
+    const settleStarted = performance.now();
     await this.stabilize(settleMs);
+    const settleElapsedMs = Math.round(performance.now() - settleStarted);
     const waited = await this.waitForVisualChange(
       serial,
       state.lastScreenshotSha256,
+      state.frameFormat,
       waitForChangeMs,
       stableMs,
       pollMs,
     );
-    const foreground = await this.requireCaptureForeground('visual control observation', serial);
     state.lastScreenshotSha256 = waited.screenshot.sha256;
+    state.screenWidth = waited.screenshot.width;
+    state.screenHeight = waited.screenshot.height;
+    state.foregroundPackage = waited.foreground.packageName!;
     return {
       sessionId: options.sessionId,
       serial,
@@ -601,8 +683,15 @@ export class AndroidDeviceService {
       changed: waited.changed,
       waitElapsedMs: waited.elapsedMs,
       elapsedMs: Math.round(performance.now() - started),
+      timingMs: {
+        preflight: preflightMs,
+        input: inputMs,
+        settle: settleElapsedMs,
+        observation: waited.elapsedMs,
+        postflight: 0,
+      },
       screenshot: waited.screenshot,
-      foreground,
+      foreground: waited.foreground,
     };
   }
 
@@ -1015,7 +1104,7 @@ export class AndroidDeviceService {
   ): Promise<EvidenceSession> {
     const device = await this.deviceInfo();
     const manifest = {
-      serverVersion: '0.4.0',
+      serverVersion: '0.4.1',
       adbVersion: await this.adb.version(),
       scrcpyVersion: this.scrcpy.status().capabilities?.version ?? null,
       device,

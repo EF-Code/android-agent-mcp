@@ -1,6 +1,8 @@
 import type { ForegroundApp } from '../types.js';
 import { AdbClient } from './client.js';
 
+const FOCUSED_WINDOW_SCRIPT = '\'dumpsys window windows | grep -m 1 "mCurrentFocus=" || true\'';
+
 function parseComponent(output: string): ForegroundApp {
   const focused = /mCurrentFocus=Window\{[^}]*\s([A-Za-z0-9_.$]+)\/([A-Za-z0-9_.$]+)\}/u.exec(
     output,
@@ -25,11 +27,12 @@ export class AdbForeground {
   constructor(private readonly adb: AdbClient) {}
 
   async read(serial: string): Promise<ForegroundApp> {
-    // Samsung and other OEM builds can emit more than 256 KiB for
-    // `dumpsys activity activities`. The focused window dump is smaller and
-    // contains the same foreground package/activity signal in a bounded form.
+    // Filter on-device before crossing the ADB transport. OEM window dumps can
+    // exceed hundreds of KiB even though the focused component is one line.
     const windows = await this.adb.text(
-      this.adb.shell(serial, ['dumpsys', 'window', 'windows'], { maxOutputBytes: 512_000 }),
+      this.adb.shell(serial, ['sh', '-c', FOCUSED_WINDOW_SCRIPT], {
+        maxOutputBytes: 16_000,
+      }),
     );
     const parsed = parseComponent(windows);
     if (parsed.packageName !== null) return parsed;

@@ -124,6 +124,7 @@ const visualCoordinateSpaceSchema = z.enum(['device_pixels', 'normalized_1000'])
 
 export const visualControlStartSchema = {
   coordinate_space: visualCoordinateSpaceSchema.optional(),
+  frame_format: z.enum(['jpeg', 'png']).optional(),
 };
 
 export const visualControlActionSchema = {

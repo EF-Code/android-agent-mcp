@@ -131,12 +131,13 @@ function visualFrameContent(
         width: result.screenshot.width,
         height: result.screenshot.height,
         sha256: result.screenshot.sha256,
+        mime_type: result.screenshot.mimeType,
       },
       foreground: result.foreground,
     },
     { deviceSerial: result.serial },
   );
-  return imageContent(response, result.screenshot.png);
+  return imageContent(response, result.screenshot.data, result.screenshot.mimeType);
 }
 
 function autoMirrorWarnings(service: AndroidDeviceService): Array<{
@@ -650,7 +651,10 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
     },
     async (args) => {
       try {
-        const result = await service.visualControlStart(args.coordinate_space ?? 'normalized_1000');
+        const result = await service.visualControlStart(
+          args.coordinate_space ?? 'normalized_1000',
+          args.frame_format ?? 'jpeg',
+        );
         return visualFrameContent(result, { started_at: result.startedAt });
       } catch (error) {
         return toolError(error);
@@ -702,6 +706,7 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
           changed: result.changed,
           wait_elapsed_ms: result.waitElapsedMs,
           elapsed_ms: result.elapsedMs,
+          timing_ms: result.timingMs,
         });
       } catch (error) {
         return toolError(error);
@@ -1094,7 +1099,7 @@ export function createMcpServer(config: ServerConfig = loadConfig()): {
 } {
   const service = new AndroidDeviceService(config);
   const server = new McpServer(
-    { name: 'android-device', version: '0.4.0' },
+    { name: 'android-device', version: '0.4.1' },
     { instructions: SERVER_INSTRUCTIONS },
   );
   registerReadOnlyTools(server, service);

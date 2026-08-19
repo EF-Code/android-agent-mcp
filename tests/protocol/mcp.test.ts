@@ -31,7 +31,7 @@ test('MCP stdio server initializes with instructions and exposes stable tools', 
     await client.connect(transport);
     serverPid = transport.pid;
     assert.ok(serverPid !== null);
-    assert.deepEqual(client.getServerVersion(), { name: 'android-device', version: '0.4.0' });
+    assert.deepEqual(client.getServerVersion(), { name: 'android-device', version: '0.4.1' });
     const instructions = client.getInstructions();
     assert.ok(instructions?.startsWith('Select exactly one authorized Android device'));
     assert.ok(instructions !== undefined && instructions.length <= 512);
@@ -130,13 +130,18 @@ test('returns image content and structured errors over MCP stdio', async () => {
       text?: string;
     }>;
     assert.ok(
-      visualStartContent.some((item) => item.type === 'image' && item.mimeType === 'image/png'),
+      visualStartContent.some((item) => item.type === 'image' && item.mimeType === 'image/jpeg'),
     );
     const visualStartText = visualStartContent.find((item) => item.type === 'text')?.text ?? '';
     const visualStartData = JSON.parse(visualStartText) as {
-      data: { session_id: string; coordinate_space: string };
+      data: {
+        session_id: string;
+        coordinate_space: string;
+        screen: { mime_type: string };
+      };
     };
     assert.equal(visualStartData.data.coordinate_space, 'normalized_1000');
+    assert.equal(visualStartData.data.screen.mime_type, 'image/jpeg');
 
     const duplicateVisualStart = await client.callTool({
       name: 'visual_control_start',
@@ -161,7 +166,7 @@ test('returns image content and structured errors over MCP stdio', async () => {
       text?: string;
     }>;
     assert.ok(
-      visualActionContent.some((item) => item.type === 'image' && item.mimeType === 'image/png'),
+      visualActionContent.some((item) => item.type === 'image' && item.mimeType === 'image/jpeg'),
     );
     const visualActionText = visualActionContent.find((item) => item.type === 'text')?.text ?? '';
     const visualActionData = JSON.parse(visualActionText) as {
@@ -170,12 +175,23 @@ test('returns image content and structured errors over MCP stdio', async () => {
         changed: boolean;
         elapsed_ms: number;
         wait_elapsed_ms: number;
+        timing_ms: {
+          preflight: number;
+          input: number;
+          settle: number;
+          observation: number;
+          postflight: number;
+        };
       };
     };
     assert.equal(visualActionData.data.action_count, 2);
     assert.equal(visualActionData.data.changed, false);
     assert.equal(typeof visualActionData.data.elapsed_ms, 'number');
     assert.equal(typeof visualActionData.data.wait_elapsed_ms, 'number');
+    assert.equal(typeof visualActionData.data.timing_ms.preflight, 'number');
+    assert.equal(typeof visualActionData.data.timing_ms.input, 'number');
+    assert.equal(typeof visualActionData.data.timing_ms.observation, 'number');
+    assert.equal(typeof visualActionData.data.timing_ms.postflight, 'number');
 
     const invalidVisualAction = await client.callTool({
       name: 'visual_control_action',
