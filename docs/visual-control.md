@@ -7,8 +7,8 @@ The design follows the continuous frame → structured action → ADB → next-f
 ## Session loop
 
 1. Select one authorized device with `device_select` when needed.
-2. Call `visual_control_start`. The response contains an initial PNG frame, a session ID, display dimensions, and the default coordinate space.
-3. Call `visual_control_action` for each visual decision. The server dispatches a bounded action sequence and returns the next PNG frame in the same MCP response.
+2. Call `visual_control_start`. The response contains an initial frame, a session ID, display dimensions, MIME type, and the default coordinate space. Visual sessions prefer Android's JPEG capture path and fall back to PNG automatically; pass `frame_format: "png"` only when lossless pixels are required.
+3. Call `visual_control_action` for each visual decision. The server dispatches a bounded action sequence and returns the next frame in the same MCP response.
 4. Call `visual_control_stop` when the visual task is complete.
 
 Do not call `screen_capture` between visual actions. The image returned by `visual_control_action` is the observation for the next model decision.
@@ -17,7 +17,7 @@ Do not call `screen_capture` between visual actions. The image returned by `visu
 
 The default coordinate space is `normalized_1000`, matching the Google quickstart convention. Each axis is an integer from `0` through `999`; the server maps it to the selected phone's native screenshot dimensions. Use `device_pixels` only when the agent has deliberately calibrated native coordinates.
 
-Actions are bounded to at most 32 taps, swipes, or allowlisted non-sensitive key presses per call. A chess move should normally be two taps in one action:
+Actions are bounded to at most 32 taps, swipes, or allowlisted non-sensitive key presses per call. A chess move should be one swipe when the app supports drag-to-move, or two taps in one action otherwise:
 
 ```json
 {
@@ -27,11 +27,28 @@ Actions are bounded to at most 32 taps, swipes, or allowlisted non-sensitive key
     { "type": "tap", "x": 458, "y": 700 }
   ],
   "coordinate_space": "normalized_1000",
-  "wait_for_change_ms": 1500
+  "wait_for_change_ms": 0
 }
 ```
 
-`wait_for_change_ms` is optional and bounded to 15 seconds. It polls screenshots until the returned frame differs from the prior session frame. `stable_ms` can request a short stable-frame window after the first change; keep it at zero unless the app has a visible transition or animation. The result reports `elapsed_ms`, `wait_elapsed_ms`, `changed`, and the returned screenshot hash so a host can measure the device-side path.
+`wait_for_change_ms` is optional and bounded to 15 seconds. It polls frames only while the screen still matches the previous session frame. `settle_ms` delays the first observation when the app needs time to animate or an opponent needs time to respond. `stable_ms` then requests a quiet-frame window after the first observed change. Keep all three at zero for immediate board actions; add only the shortest delay the app genuinely needs.
+
+The result reports `elapsed_ms`, `wait_elapsed_ms`, `changed`, the frame hash/MIME type, and `timing_ms` split into preflight, input, settle, observation, and postflight. That distinguishes device overhead from the model's reasoning/tool-call latency.
+
+## Physical latency benchmark
+
+With one authorized device and a non-sensitive app in the foreground, run:
+
+```zsh
+npm run benchmark:visual -- --iterations 10
+```
+
+The benchmark uses one reversible volume-up/volume-down batch, performs an unmeasured warmup, and prints p50/p95 action-to-frame latency plus phase timings. It does not measure model vision or reasoning. Compare JPEG and PNG directly when diagnosing a device:
+
+```zsh
+npm run benchmark:visual -- --iterations 10 --frame-format jpeg
+npm run benchmark:visual -- --iterations 10 --frame-format png
+```
 
 ## Safety and performance boundaries
 
@@ -39,5 +56,6 @@ Actions are bounded to at most 32 taps, swipes, or allowlisted non-sensitive key
 - Foreground package policy is checked before actions and after returned frames; sensitive packages remain blocked by default.
 - UI hierarchy verification is intentionally not performed in this visual path.
 - Screenshot content is returned with the action, avoiding an extra MCP round trip.
+- Single actions use direct ADB argument arrays; multi-action batches use a validated, quoted remote script and reject Android input usage output instead of reporting false success.
 - The session does not make model reasoning faster. Use the host's low-latency or low-thinking mode when available and keep one model decision per visual action.
 - Use semantic `ui_dump`/`ui_find`/`ui_tap` for ordinary controls; do not use visual sessions as a replacement for accessibility-aware interaction.
