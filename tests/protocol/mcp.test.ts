@@ -130,7 +130,7 @@ test('returns image content and structured errors over MCP stdio', async () => {
       text?: string;
     }>;
     assert.ok(
-      visualStartContent.some((item) => item.type === 'image' && item.mimeType === 'image/png'),
+      visualStartContent.some((item) => item.type === 'image' && item.mimeType === 'image/jpeg'),
     );
     const visualStartText = visualStartContent.find((item) => item.type === 'text')?.text ?? '';
     const visualStartData = JSON.parse(visualStartText) as {
@@ -141,7 +141,7 @@ test('returns image content and structured errors over MCP stdio', async () => {
       };
     };
     assert.equal(visualStartData.data.coordinate_space, 'normalized_1000');
-    assert.equal(visualStartData.data.screen.mime_type, 'image/png');
+    assert.equal(visualStartData.data.screen.mime_type, 'image/jpeg');
 
     const duplicateVisualStart = await client.callTool({
       name: 'visual_control_start',
@@ -166,7 +166,7 @@ test('returns image content and structured errors over MCP stdio', async () => {
       text?: string;
     }>;
     assert.ok(
-      visualActionContent.some((item) => item.type === 'image' && item.mimeType === 'image/png'),
+      visualActionContent.some((item) => item.type === 'image' && item.mimeType === 'image/jpeg'),
     );
     const visualActionText = visualActionContent.find((item) => item.type === 'text')?.text ?? '';
     const visualActionData = JSON.parse(visualActionText) as {
