@@ -9,7 +9,11 @@ import { AdbLogcat, type LogCaptureOptions } from './adb/logcat.js';
 import { AdbPackages } from './adb/packages.js';
 import { AdbPermissions } from './adb/permissions.js';
 import { AdbProperties } from './adb/properties.js';
-import { AdbScreenshots, type Screenshot } from './adb/screenshots.js';
+import {
+  AdbScreenshots,
+  type EncodedScreenshot,
+  type VisualFrameFormat,
+} from './adb/screenshots.js';
 import { AdbUiAutomator } from './adb/ui-automator.js';
 import { EvidenceManager, type EvidenceSession } from './evidence/recorder.js';
 import { Policy } from './policy/policy.js';
@@ -78,7 +82,7 @@ export interface ActionObservation {
 }
 
 export interface VisualControlFrame {
-  screenshot: Screenshot;
+  screenshot: EncodedScreenshot;
   foreground: ForegroundApp;
 }
 
@@ -104,6 +108,7 @@ interface VisualControlSessionState {
   serial: string;
   deviceSessionId: string;
   coordinateSpace: VisualCoordinateSpace;
+  frameFormat: VisualFrameFormat;
   lastScreenshotSha256: string;
   screenWidth: number;
   screenHeight: number;
@@ -415,9 +420,13 @@ export class AndroidDeviceService {
     return { screenshot, rotation, foreground };
   }
 
-  private async captureVisualFrame(serial: string, operation: string): Promise<VisualControlFrame> {
+  private async captureVisualFrame(
+    serial: string,
+    operation: string,
+    frameFormat: VisualFrameFormat,
+  ): Promise<VisualControlFrame> {
     await this.requireCaptureForeground(`${operation} before capture`, serial);
-    const screenshot = await this.screenshots.capture(serial);
+    const screenshot = await this.screenshots.captureVisual(serial, frameFormat);
     const foreground = await this.requireCaptureForeground(`${operation} after capture`, serial);
     return { screenshot, foreground };
   }
@@ -455,12 +464,13 @@ export class AndroidDeviceService {
   private async waitForVisualChange(
     serial: string,
     baselineSha256: string,
+    frameFormat: VisualFrameFormat,
     waitForChangeMs: number,
     stableMs: number,
     pollMs: number,
-  ): Promise<{ screenshot: Screenshot; changed: boolean; elapsedMs: number }> {
+  ): Promise<{ screenshot: EncodedScreenshot; changed: boolean; elapsedMs: number }> {
     const started = performance.now();
-    let screenshot = await this.screenshots.capture(serial);
+    let screenshot = await this.screenshots.captureVisual(serial, frameFormat);
     let changed = screenshot.sha256 !== baselineSha256;
     if (waitForChangeMs === 0 || (!changed && performance.now() - started >= waitForChangeMs)) {
       return {
@@ -472,7 +482,7 @@ export class AndroidDeviceService {
 
     while (!changed && performance.now() - started < waitForChangeMs) {
       await new Promise((resolve) => setTimeout(resolve, pollMs));
-      screenshot = await this.screenshots.capture(serial);
+      screenshot = await this.screenshots.captureVisual(serial, frameFormat);
       changed = screenshot.sha256 !== baselineSha256;
     }
     if (!changed || stableMs === 0) {
@@ -487,7 +497,7 @@ export class AndroidDeviceService {
     while (performance.now() - started < waitForChangeMs) {
       if (performance.now() - stableSince >= stableMs) break;
       await new Promise((resolve) => setTimeout(resolve, pollMs));
-      const next = await this.screenshots.capture(serial);
+      const next = await this.screenshots.captureVisual(serial, frameFormat);
       if (next.sha256 !== screenshot.sha256) {
         screenshot = next;
         stableSince = performance.now();
@@ -502,6 +512,7 @@ export class AndroidDeviceService {
 
   async visualControlStart(
     coordinateSpace: VisualCoordinateSpace = 'normalized_1000',
+    frameFormat: VisualFrameFormat = 'jpeg',
   ): Promise<VisualControlStartResult> {
     const serial = await this.selectedSerial();
     const selected = await this.devices.requireSelected({ checkConnection: false });
@@ -518,7 +529,7 @@ export class AndroidDeviceService {
         },
       );
     }
-    const frame = await this.captureVisualFrame(serial, 'visual control start');
+    const frame = await this.captureVisualFrame(serial, 'visual control start', frameFormat);
     const sessionId = randomUUID();
     const startedAt = new Date().toISOString();
     this.visualControlSessions.set(sessionId, {
@@ -526,6 +537,7 @@ export class AndroidDeviceService {
       serial,
       deviceSessionId: selected.sessionId,
       coordinateSpace,
+      frameFormat,
       lastScreenshotSha256: frame.screenshot.sha256,
       screenWidth: frame.screenshot.width,
       screenHeight: frame.screenshot.height,
@@ -589,6 +601,7 @@ export class AndroidDeviceService {
     const waited = await this.waitForVisualChange(
       serial,
       state.lastScreenshotSha256,
+      state.frameFormat,
       waitForChangeMs,
       stableMs,
       pollMs,

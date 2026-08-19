@@ -134,9 +134,14 @@ test('returns image content and structured errors over MCP stdio', async () => {
     );
     const visualStartText = visualStartContent.find((item) => item.type === 'text')?.text ?? '';
     const visualStartData = JSON.parse(visualStartText) as {
-      data: { session_id: string; coordinate_space: string };
+      data: {
+        session_id: string;
+        coordinate_space: string;
+        screen: { mime_type: string };
+      };
     };
     assert.equal(visualStartData.data.coordinate_space, 'normalized_1000');
+    assert.equal(visualStartData.data.screen.mime_type, 'image/png');
 
     const duplicateVisualStart = await client.callTool({
       name: 'visual_control_start',
