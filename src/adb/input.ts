@@ -1,6 +1,6 @@
 import { ErrorCode } from '../errors/codes.js';
 import { AppError } from '../errors/app-error.js';
-import { validateCoordinate, validateDuration } from '../validation/common.js';
+import { validateCoordinate, validateDuration, validatePackageName } from '../validation/common.js';
 import { AdbClient } from './client.js';
 
 export const KEY_CODES = {
@@ -98,6 +98,17 @@ function quoteRemoteShellScript(script: string): string {
 
 function assertInputSequenceOutput(stdout: Buffer, stderr: Buffer): void {
   const diagnostic = Buffer.concat([stdout, stderr]).toString('utf8').trim();
+  const mismatch = /__ANDROID_AGENT_MCP_FOREGROUND_MISMATCH__([^\r\n]*)/u.exec(diagnostic);
+  if (mismatch !== null) {
+    throw new AppError(
+      ErrorCode.StaleUiSnapshot,
+      'Foreground changed before the visual input sequence could execute.',
+      {
+        retryable: true,
+        details: { currentPackage: mismatch[1] || null },
+      },
+    );
+  }
   if (!/(?:^|\n)Usage: input\b/u.test(diagnostic)) return;
   throw new AppError(ErrorCode.CommandFailed, 'Android rejected the generated input sequence.', {
     retryable: true,
@@ -200,6 +211,21 @@ export class AdbInput {
       return;
     }
     const output = await this.adb.shell(serial, ['sh', '-c', quoteRemoteShellScript(script)]);
+    assertInputSequenceOutput(output.stdout, output.stderr);
+  }
+
+  async guardedSequence(
+    serial: string,
+    actions: readonly InputSequenceAction[],
+    expectedPackage: string,
+    interActionDelayMs = 0,
+  ): Promise<void> {
+    validatePackageName(expectedPackage);
+    const inputScript = buildInputSequenceScript(actions, interActionDelayMs);
+    const foregroundScript =
+      'foreground_line=$(dumpsys window windows | grep -m 1 "mCurrentFocus=" || dumpsys activity activities | grep -m 1 -E "topResumedActivity=|mFocusedApp=|mResumedActivity|ResumedActivity:"); current_package=$(printf "${foreground_line}\\n" | sed -E "s@.* ([A-Za-z0-9_.$]+)/.*@\\\\1@"); ';
+    const guardScript = `${foregroundScript}if [ "$current_package" = "${expectedPackage}" ]; then ${inputScript}; else printf "__ANDROID_AGENT_MCP_FOREGROUND_MISMATCH__%s\\n" "$current_package"; fi`;
+    const output = await this.adb.shell(serial, ['sh', '-c', quoteRemoteShellScript(guardScript)]);
     assertInputSequenceOutput(output.stdout, output.stderr);
   }
 

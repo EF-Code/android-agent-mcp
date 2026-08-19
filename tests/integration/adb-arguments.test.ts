@@ -145,6 +145,51 @@ test('rejects Android input usage output instead of reporting false success', as
   );
 });
 
+test('guards visual input against foreground changes in the same remote command', async () => {
+  const runner = new RecordingRunner();
+  const adb = new AdbClient({
+    adbPath: 'adb',
+    defaultTimeoutMs: 5_000,
+    maxOutputBytes: 100_000,
+    runner,
+  });
+  await new AdbInput(adb).guardedSequence(
+    'serial-1',
+    [{ type: 'swipe', startX: 10, startY: 20, endX: 30, endY: 40, durationMs: 100 }],
+    'com.example.game',
+  );
+  const args = runner.calls[0]?.args ?? [];
+  assert.deepEqual(args.slice(0, 5), ['-s', 'serial-1', 'shell', 'sh', '-c']);
+  assert.match(args[5] ?? '', /current_package/u);
+  assert.match(args[5] ?? '', /com\.example\.game/u);
+  assert.match(args[5] ?? '', /input swipe 10 20 30 40 100/u);
+});
+
+test('rejects a guarded visual action when the device reports another package', async () => {
+  const runner: CommandRunner = {
+    async run() {
+      return output('__ANDROID_AGENT_MCP_FOREGROUND_MISMATCH__com.example.other\n');
+    },
+  };
+  const adb = new AdbClient({
+    adbPath: 'adb',
+    defaultTimeoutMs: 5_000,
+    maxOutputBytes: 100_000,
+    runner,
+  });
+  await assert.rejects(
+    new AdbInput(adb).guardedSequence(
+      'serial-1',
+      [{ type: 'tap', x: 10, y: 20 }],
+      'com.example.game',
+    ),
+    (error: unknown) =>
+      error instanceof AppError &&
+      error.code === ErrorCode.StaleUiSnapshot &&
+      error.details.currentPackage === 'com.example.other',
+  );
+});
+
 test('uses direct ADB argument arrays for screenshots and UIAutomator', async () => {
   const runner = new RecordingRunner();
   const adb = new AdbClient({

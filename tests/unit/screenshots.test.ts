@@ -99,6 +99,49 @@ test('uses JPEG for visual frames when Android supports it', async () => {
   assert.deepEqual(calls[0], ['-s', 'serial-1', 'exec-out', 'screencap', '-j']);
 });
 
+test('captures a visual frame and foreground state in one ADB round trip', async () => {
+  const frame = jpeg(720, 1600);
+  const foreground = 'mCurrentFocus=Window{123 u0 com.example.app/com.example.app.MainActivity}\n';
+  const combined = Buffer.concat([
+    frame,
+    Buffer.from(`\n__ANDROID_AGENT_MCP_FOREGROUND__\n${foreground}`),
+  ]);
+  const calls: string[][] = [];
+  const adb = new AdbClient({
+    adbPath: 'fake-adb',
+    defaultTimeoutMs: 5_000,
+    maxOutputBytes: 16_000,
+    runner: {
+      run: async (_executable, args) => {
+        calls.push([...args]);
+        return {
+          stdout: combined,
+          stderr: Buffer.alloc(0),
+          record: {
+            executable: 'fake-adb',
+            args: [...args],
+            exitCode: 0,
+            signal: null,
+            durationMs: 0,
+            stdoutBytes: combined.length,
+            stderrBytes: 0,
+            stdoutTruncated: false,
+            stderrTruncated: false,
+          },
+        };
+      },
+    },
+  });
+  const observation = await new AdbScreenshots(adb, 2_048).captureVisualObservation('serial-1');
+  assert.equal(observation.screenshot.mimeType, 'image/jpeg');
+  assert.equal(observation.screenshot.width, 720);
+  assert.equal(observation.foregroundOutput, foreground);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0]?.slice(0, 5), ['-s', 'serial-1', 'exec-out', 'sh', '-c']);
+  assert.match(calls[0]?.[5] ?? '', /screencap -j/u);
+  assert.match(calls[0]?.[5] ?? '', /mCurrentFocus=/u);
+});
+
 test('caches PNG fallback when Android does not support JPEG screencap', async () => {
   const frame = png(720, 1600);
   const calls: string[][] = [];

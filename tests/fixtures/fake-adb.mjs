@@ -11,9 +11,19 @@ const jpeg = Buffer.from([
   0x38, 0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00, 0xff, 0xd9,
 ]);
 
+const visualObservationScript = args.find((arg) =>
+  arg.includes('__ANDROID_AGENT_MCP_FOREGROUND__'),
+);
+
 if (args[0] === 'devices') {
   process.stdout.write(
     'List of devices attached\nprotocol-test\tdevice model:Protocol_Test device:protocol\n',
+  );
+} else if (visualObservationScript !== undefined) {
+  const image = visualObservationScript.includes('screencap -j') ? jpeg : png;
+  process.stdout.write(image);
+  process.stdout.write(
+    '\n__ANDROID_AGENT_MCP_FOREGROUND__\nmCurrentFocus=Window{protocol u0 com.example.app/.Main}\n',
   );
 } else if (args.includes('screencap') && args.includes('-j')) {
   process.stdout.write(jpeg);
