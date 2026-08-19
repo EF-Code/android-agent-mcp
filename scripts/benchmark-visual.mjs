@@ -16,13 +16,14 @@ Options:
   --iterations <count>      Measured actions after warmup (default: 5, max: 100).
   --warmup <count>          Unmeasured warmup actions (default: 1, max: 10).
   --frame-format <format>   jpeg or png (default: jpeg).
+  --actions <count>         One alternating key or a two-key batch (default: 2).
   --wait-ms <milliseconds>  Wait for a changed frame (default: 0, max: 15000).
   --stable-ms <milliseconds> Require a stable frame window (default: 0, max: 2000).
   --help                    Show this help.
 
-The benchmark sends volume-up then volume-down in one batch, returning the
-device to its previous volume in normal conditions. Keep a non-sensitive app
-in the foreground. No UI hierarchy dump is performed between actions.
+The benchmark uses reversible volume keys, either as one alternating key per
+sample or as an up/down pair. Keep a non-sensitive app in the foreground. No
+UI hierarchy dump is performed between actions.
 `);
 }
 
@@ -42,6 +43,7 @@ function parseOptions(argv) {
     '--iterations',
     '--warmup',
     '--frame-format',
+    '--actions',
     '--wait-ms',
     '--stable-ms',
   ]);
@@ -61,12 +63,15 @@ function parseOptions(argv) {
   }
   const iterations = integer(values.get('--iterations'), '--iterations', 5, 100);
   if (iterations < 1) throw new Error('--iterations must be at least 1.');
+  const actions = integer(values.get('--actions'), '--actions', 2, 2);
+  if (actions < 1) throw new Error('--actions must be 1 or 2.');
   return {
     help: false,
     serial: values.get('--serial'),
     iterations,
     warmup: integer(values.get('--warmup'), '--warmup', 1, 10),
     frameFormat,
+    actions,
     waitMs: integer(values.get('--wait-ms'), '--wait-ms', 0, 15_000),
     stableMs: integer(values.get('--stable-ms'), '--stable-ms', 0, 2_000),
   };
@@ -122,22 +127,37 @@ async function main() {
     const samples = [];
     const totalRuns = options.warmup + options.iterations;
     for (let index = 0; index < totalRuns; index += 1) {
+      const actions =
+        options.actions === 1
+          ? [{ type: 'key', key: index % 2 === 0 ? 'volume_up' : 'volume_down' }]
+          : [
+              { type: 'key', key: 'volume_up' },
+              { type: 'key', key: 'volume_down' },
+            ];
       const action = envelope(
         await client.callTool({
           name: 'visual_control_action',
           arguments: {
             session_id: visualSessionId,
-            actions: [
-              { type: 'key', key: 'volume_up' },
-              { type: 'key', key: 'volume_down' },
-            ],
-            inter_action_delay_ms: 75,
+            actions,
+            inter_action_delay_ms: options.actions === 1 ? 0 : 75,
             wait_for_change_ms: options.waitMs,
             stable_ms: options.stableMs,
           },
         }),
       );
       if (index >= options.warmup) samples.push(action);
+    }
+    if (options.actions === 1 && totalRuns % 2 !== 0) {
+      envelope(
+        await client.callTool({
+          name: 'visual_control_action',
+          arguments: {
+            session_id: visualSessionId,
+            actions: [{ type: 'key', key: 'volume_down' }],
+          },
+        }),
+      );
     }
     const totals = samples.map((sample) => sample.elapsed_ms);
     process.stdout.write(
@@ -146,6 +166,7 @@ async function main() {
           serial,
           foreground: started.foreground,
           frame: started.screen,
+          actions_per_sample: options.actions,
           iterations: options.iterations,
           p50_ms: percentile(totals, 0.5),
           p95_ms: percentile(totals, 0.95),
