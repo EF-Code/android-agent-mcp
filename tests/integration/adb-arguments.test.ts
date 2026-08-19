@@ -10,7 +10,7 @@ import { AdbScreenshots } from '../../src/adb/screenshots.js';
 import { AdbUiAutomator } from '../../src/adb/ui-automator.js';
 import { AppError } from '../../src/errors/app-error.js';
 import { ErrorCode } from '../../src/errors/codes.js';
-import { parseForegroundActivity } from '../../src/adb/foreground.js';
+import { AdbForeground, parseForegroundActivity } from '../../src/adb/foreground.js';
 import type { CommandOutput } from '../../src/types.js';
 
 function output(stdout: string | Buffer = ''): CommandOutput {
@@ -251,6 +251,34 @@ test('parses modern Android foreground activity records', () => {
   assert.deepEqual(foreground, {
     packageName: 'com.example.app',
     activity: '.MainActivity',
+    pid: null,
+  });
+});
+
+test('filters the focused window on-device before transferring foreground state', async () => {
+  const runner: CommandRunner = {
+    async run(executable, args) {
+      assert.equal(executable, 'adb');
+      assert.deepEqual(args, [
+        '-s',
+        'serial-5',
+        'shell',
+        'sh',
+        '-c',
+        '\'dumpsys window windows | grep -m 1 "mCurrentFocus=" || true\'',
+      ]);
+      return output('mCurrentFocus=Window{123 u0 com.example.app/com.example.app.MainActivity}\n');
+    },
+  };
+  const adb = new AdbClient({
+    adbPath: 'adb',
+    defaultTimeoutMs: 5_000,
+    maxOutputBytes: 100_000,
+    runner,
+  });
+  assert.deepEqual(await new AdbForeground(adb).read('serial-5'), {
+    packageName: 'com.example.app',
+    activity: 'com.example.app.MainActivity',
     pid: null,
   });
 });
