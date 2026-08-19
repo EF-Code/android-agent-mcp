@@ -1054,7 +1054,7 @@ export class AndroidDeviceService {
   ): Promise<EvidenceSession> {
     const device = await this.deviceInfo();
     const manifest = {
-      serverVersion: '0.4.0',
+      serverVersion: '0.4.1',
       adbVersion: await this.adb.version(),
       scrcpyVersion: this.scrcpy.status().capabilities?.version ?? null,
       device,

@@ -7,13 +7,13 @@ Android Agent MCP includes a guided installer for users who already have one or 
 With Node.js 22 or newer and the Android host prerequisites installed, run:
 
 ```zsh
-npx -y android-agent-mcp@0.4.0 setup
+npx -y android-agent-mcp@0.4.1 setup
 ```
 
 The installer checks commands on `PATH`, writes only the detected hosts, and prints the files it configured. A global installation is useful when the setup command will be run more than once:
 
 ```zsh
-npm install --global android-agent-mcp@0.4.0
+npm install --global android-agent-mcp@0.4.1
 android-agent-mcp setup
 ```
 
@@ -66,25 +66,25 @@ The documented macOS and Windows application-data roots are selected automatical
 Preview the native configuration without writing anything:
 
 ```zsh
-npx -y android-agent-mcp@0.4.0 setup --dry-run
+npx -y android-agent-mcp@0.4.1 setup --dry-run
 ```
 
 Configure one host explicitly:
 
 ```zsh
-npx -y android-agent-mcp@0.4.0 setup --client openclaw
+npx -y android-agent-mcp@0.4.1 setup --client openclaw
 ```
 
 Print a portable JSON configuration for a host not included in the automatic integrations:
 
 ```zsh
-npx -y android-agent-mcp@0.4.0 setup --client generic
+npx -y android-agent-mcp@0.4.1 setup --client generic
 ```
 
 Pass a project-specific Android Agent MCP configuration file to the generated host entry:
 
 ```zsh
-npx -y android-agent-mcp@0.4.0 setup --config /absolute/path/android-agent-mcp.json
+npx -y android-agent-mcp@0.4.1 setup --config /absolute/path/android-agent-mcp.json
 ```
 
 Existing configuration files are updated in place and retain their current permissions. Before the first update, the installer creates a sibling backup with the suffix `.android-agent-mcp.bak`; later runs do not overwrite that first backup. Writes use temporary files and atomic replacement where the host format permits it.
