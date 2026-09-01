@@ -12,20 +12,20 @@ The guided installer uses the repository lockfile, builds the server, detects Co
 The published npm package can configure Codex without a checkout:
 
 ```zsh
-npx -y android-agent-mcp@0.4.1 setup --client codex
+npx -y android-agent-mcp@0.4.2 setup --client codex
 ```
 
 For a reusable global installation:
 
 ```zsh
-npm install --global android-agent-mcp@0.4.1
+npm install --global android-agent-mcp@0.4.2
 android-agent-mcp setup --client codex
 ```
 
 To register a pinned release manually instead, use `npx` as the executable and pass the package invocation as arguments:
 
 ```zsh
-codex mcp add android-device -- npx --yes android-agent-mcp@0.4.1
+codex mcp add android-device -- npx --yes android-agent-mcp@0.4.2
 ```
 
 When working inside an `android-agent-mcp` source checkout, use the compiled local entrypoint below instead of `npx` so npm does not resolve the checkout itself. npm installs the MCP server only; `adb` and `scrcpy` remain host prerequisites.
