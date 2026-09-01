@@ -34,6 +34,7 @@ import {
   validatePackageName,
 } from './validation/common.js';
 import type { ScrcpyStartOptions } from './scrcpy/capabilities.js';
+import { ScrcpyDirectControl } from './scrcpy/direct-control.js';
 import { ScrcpyProcessManager } from './scrcpy/process-manager.js';
 
 const STARTUP_WAIT_MS = 200;
@@ -101,6 +102,8 @@ export interface VisualControlActionResult extends VisualControlFrame {
   changed: boolean;
   waitElapsedMs: number;
   elapsedMs: number;
+  inputTransport: 'scrcpy' | 'adb';
+  frameTransport: 'scrcpy' | 'adb';
   timingMs: {
     preflight: number;
     input: number;
@@ -138,6 +141,7 @@ export class AndroidDeviceService {
   readonly uiAutomator: AdbUiAutomator;
   readonly snapshots: SnapshotStore;
   readonly scrcpy: ScrcpyProcessManager;
+  readonly directControl: ScrcpyDirectControl;
   readonly evidence: EvidenceManager;
   private readonly activeLogControllers = new Set<AbortController>();
   private readonly displayGeometryCache = new Map<
@@ -173,6 +177,7 @@ export class AndroidDeviceService {
     this.uiAutomator = new AdbUiAutomator(this.adb);
     this.snapshots = new SnapshotStore(config.uiSnapshotMaxAgeMs);
     this.scrcpy = new ScrcpyProcessManager(config.scrcpyPath, config.mirror.leaveRunningOnExit);
+    this.directControl = new ScrcpyDirectControl(this.adb);
     this.evidence = new EvidenceManager(
       config.evidenceRoot,
       config.maxEvidenceBytes,
@@ -185,7 +190,7 @@ export class AndroidDeviceService {
     for (const controller of this.activeLogControllers) controller.abort();
     this.visualControlSessions.clear();
     try {
-      await this.scrcpy.dispose();
+      await Promise.all([this.scrcpy.dispose(), this.directControl.close()]);
     } finally {
       if (this.evidence.activeSession !== null) await this.evidence.finish();
     }
@@ -198,6 +203,7 @@ export class AndroidDeviceService {
       if (session.serial === serial) this.visualControlSessions.delete(sessionId);
     }
     this.scrcpy.markDetached(serial);
+    void this.directControl.close();
     this.autoMirrorAttemptedSessionId = null;
     for (const controller of this.activeLogControllers) controller.abort();
     this.evidence.pause(`selected device ${serial} disconnected`);
@@ -216,6 +222,7 @@ export class AndroidDeviceService {
   }
 
   async selectDevice(serial: string): Promise<Awaited<ReturnType<DeviceManager['select']>>> {
+    await this.directControl.close();
     const result = await this.devices.select(serial);
     this.displayGeometryCache.delete(serial);
     this.visualControlSessions.clear();
@@ -590,7 +597,10 @@ export class AndroidDeviceService {
         },
       );
     }
-    const frame = await this.captureVisualFrame(serial, 'visual control start', frameFormat);
+    const [frame] = await Promise.all([
+      this.captureVisualFrame(serial, 'visual control start', frameFormat),
+      this.directControl.ensureStarted(serial),
+    ]);
     const sessionId = randomUUID();
     const startedAt = new Date().toISOString();
     this.visualControlSessions.set(sessionId, {
@@ -621,7 +631,7 @@ export class AndroidDeviceService {
     const started = performance.now();
     const { state, serial } = await this.requireVisualControlSession(options.sessionId);
     const coordinateSpace = options.coordinateSpace ?? state.coordinateSpace;
-    const preflightMs = 0;
+    let preflightMs = 0;
     const geometry = { width: state.screenWidth, height: state.screenHeight };
     const actions = mapVisualInputActions(
       options.actions,
@@ -658,21 +668,87 @@ export class AndroidDeviceService {
         details: { pollMs },
       });
     }
+    const streamBaseline =
+      state.frameFormat === 'jpeg'
+        ? (this.scrcpy.latestFrame() ?? (await this.scrcpy.waitForFrame(0, 300)))
+        : null;
     const actionStarted = performance.now();
-    const observation = await this.screenshots.captureVisualAction(
-      serial,
-      actions,
-      state.foregroundPackage,
-      options.interActionDelayMs ?? 0,
-      settleMs,
-      state.frameFormat,
-    );
-    const actionElapsedMs = Math.round(performance.now() - actionStarted);
-    const foreground = await this.requireCapturedForeground(
-      observation.foregroundOutput,
-      'visual control observation',
-      serial,
-    );
+    let frame: VisualControlFrame;
+    let inputMs: number;
+    let settleElapsedMs: number;
+    let inputTransport: 'scrcpy' | 'adb' = 'adb';
+    let frameTransport: 'scrcpy' | 'adb' = 'adb';
+    if (streamBaseline !== null) {
+      const preflightStarted = performance.now();
+      const currentForeground = await this.requireAllowedForeground(
+        'visual control direct input',
+        serial,
+      );
+      assertSameForeground(
+        { packageName: state.foregroundPackage, activity: currentForeground.activity, pid: null },
+        currentForeground,
+        'visual control direct input',
+      );
+      const directReady = await this.directControl.ensureStarted(serial);
+      preflightMs = Math.round(performance.now() - preflightStarted);
+      const inputStarted = performance.now();
+      if (directReady) {
+        inputTransport = 'scrcpy';
+        await this.directControl.sequence(
+          actions,
+          geometry.width,
+          geometry.height,
+          options.interActionDelayMs ?? 0,
+        );
+      } else {
+        await this.input.guardedSequence(
+          serial,
+          actions,
+          state.foregroundPackage,
+          options.interActionDelayMs ?? 0,
+        );
+      }
+      inputMs = Math.round(performance.now() - inputStarted);
+      const settleStarted = performance.now();
+      await this.stabilize(settleMs);
+      settleElapsedMs = Math.round(performance.now() - settleStarted);
+      const streamed = await this.scrcpy.waitForFrame(streamBaseline.sequence, 1_000);
+      if (streamed === null) {
+        frame = await this.captureVisualFrame(
+          serial,
+          'visual control stream fallback',
+          state.frameFormat,
+        );
+      } else {
+        frameTransport = 'scrcpy';
+        frame = {
+          screenshot: streamed,
+          foreground: await this.requireCaptureForeground(
+            'visual control streamed observation',
+            serial,
+          ),
+        };
+      }
+    } else {
+      const observation = await this.screenshots.captureVisualAction(
+        serial,
+        actions,
+        state.foregroundPackage,
+        options.interActionDelayMs ?? 0,
+        settleMs,
+        state.frameFormat,
+      );
+      inputMs = Math.round(performance.now() - actionStarted);
+      settleElapsedMs = settleMs;
+      frame = {
+        screenshot: observation.screenshot,
+        foreground: await this.requireCapturedForeground(
+          observation.foregroundOutput,
+          'visual control observation',
+          serial,
+        ),
+      };
+    }
     const waited = await this.waitForVisualChange(
       serial,
       state.lastScreenshotSha256,
@@ -680,11 +756,9 @@ export class AndroidDeviceService {
       waitForChangeMs,
       stableMs,
       pollMs,
-      { screenshot: observation.screenshot, foreground },
+      frame,
     );
     state.lastScreenshotSha256 = waited.screenshot.sha256;
-    state.screenWidth = waited.screenshot.width;
-    state.screenHeight = waited.screenshot.height;
     state.foregroundPackage = waited.foreground.packageName!;
     return {
       sessionId: options.sessionId,
@@ -694,10 +768,12 @@ export class AndroidDeviceService {
       changed: waited.changed,
       waitElapsedMs: waited.elapsedMs,
       elapsedMs: Math.round(performance.now() - started),
+      inputTransport,
+      frameTransport,
       timingMs: {
         preflight: preflightMs,
-        input: actionElapsedMs,
-        settle: settleMs,
+        input: inputMs,
+        settle: settleElapsedMs,
         observation: waited.elapsedMs,
         postflight: 0,
       },

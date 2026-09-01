@@ -175,6 +175,8 @@ async function main() {
           samples: samples.map((sample) => ({
             elapsed_ms: sample.elapsed_ms,
             changed: sample.changed,
+            input_transport: sample.input_transport,
+            frame_transport: sample.frame_transport,
             timing_ms: sample.timing_ms,
             frame: sample.screen,
           })),
