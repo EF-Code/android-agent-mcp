@@ -86,7 +86,7 @@ export function buildInputSequenceScript(
   return commands.join(separator);
 }
 
-function quoteRemoteShellScript(script: string): string {
+export function quoteRemoteShellScript(script: string): string {
   if (script.includes("'")) {
     throw new AppError(
       ErrorCode.InvalidInput,
@@ -124,6 +124,27 @@ export function assertInputSequenceOutput(stdout: Buffer, stderr: Buffer): void 
     retryable: true,
     details: { diagnostic: diagnostic.slice(0, 2_000) },
   });
+}
+
+export function buildForegroundGuardedScript(
+  successScript: string,
+  expectedPackage: string,
+): string {
+  validatePackageName(expectedPackage);
+  const foregroundScript =
+    'foreground_line=$(dumpsys window windows 2>/dev/null | grep -m 1 "mCurrentFocus=" || dumpsys activity activities 2>/dev/null | grep -m 1 -E "topResumedActivity=|mFocusedApp=|mResumedActivity|ResumedActivity:"); current_package=$(printf "${foreground_line}\\n" | sed -E "s@.* ([A-Za-z0-9_.$]+)/.*@\\\\1@"); ';
+  return `${foregroundScript}if [ "$current_package" = "${expectedPackage}" ]; then ${successScript}; else printf "__ANDROID_AGENT_MCP_FOREGROUND_MISMATCH__%s\\n" "$current_package"; fi`;
+}
+
+export function buildGuardedInputScript(
+  actions: readonly InputSequenceAction[],
+  expectedPackage: string,
+  interActionDelayMs = 0,
+): string {
+  return buildForegroundGuardedScript(
+    buildInputSequenceScript(actions, interActionDelayMs),
+    expectedPackage,
+  );
 }
 
 export function encodeSafeAsciiText(value: string): string {
@@ -230,11 +251,7 @@ export class AdbInput {
     expectedPackage: string,
     interActionDelayMs = 0,
   ): Promise<void> {
-    validatePackageName(expectedPackage);
-    const inputScript = buildInputSequenceScript(actions, interActionDelayMs);
-    const foregroundScript =
-      'foreground_line=$(dumpsys window windows | grep -m 1 "mCurrentFocus=" || dumpsys activity activities | grep -m 1 -E "topResumedActivity=|mFocusedApp=|mResumedActivity|ResumedActivity:"); current_package=$(printf "${foreground_line}\\n" | sed -E "s@.* ([A-Za-z0-9_.$]+)/.*@\\\\1@"); ';
-    const guardScript = `${foregroundScript}if [ "$current_package" = "${expectedPackage}" ]; then ${inputScript}; else printf "__ANDROID_AGENT_MCP_FOREGROUND_MISMATCH__%s\\n" "$current_package"; fi`;
+    const guardScript = buildGuardedInputScript(actions, expectedPackage, interActionDelayMs);
     const output = await this.adb.shell(serial, ['sh', '-c', quoteRemoteShellScript(guardScript)]);
     assertInputSequenceOutput(output.stdout, output.stderr);
   }
