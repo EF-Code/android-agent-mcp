@@ -96,8 +96,18 @@ function quoteRemoteShellScript(script: string): string {
   return `'${script}'`;
 }
 
-function assertInputSequenceOutput(stdout: Buffer, stderr: Buffer): void {
-  const diagnostic = Buffer.concat([stdout, stderr]).toString('utf8').trim();
+export function assertInputSequenceOutput(stdout: Buffer, stderr: Buffer): void {
+  // Input diagnostics are emitted before any binary screenshot payload. Bound the
+  // decoding work so fast visual actions do not UTF-8 decode an entire frame.
+  const startsWithFrame =
+    (stdout[0] === 0xff && stdout[1] === 0xd8) ||
+    (stdout[0] === 0x89 && stdout.subarray(1, 4).toString('ascii') === 'PNG');
+  const diagnostic = Buffer.concat([
+    startsWithFrame ? Buffer.alloc(0) : stdout.subarray(0, 4_096),
+    stderr.subarray(0, 4_096),
+  ])
+    .toString('utf8')
+    .trim();
   const mismatch = /__ANDROID_AGENT_MCP_FOREGROUND_MISMATCH__([^\r\n]*)/u.exec(diagnostic);
   if (mismatch !== null) {
     throw new AppError(
