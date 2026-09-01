@@ -3,6 +3,12 @@ import { createHash } from 'node:crypto';
 import { ErrorCode } from '../errors/codes.js';
 import { AppError } from '../errors/app-error.js';
 import { AdbClient } from './client.js';
+import {
+  assertInputSequenceOutput,
+  buildForegroundGuardedScript,
+  buildInputSequenceScript,
+  type InputSequenceAction,
+} from './input.js';
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const OBSERVATION_MARKER_TEXT = '__ANDROID_AGENT_MCP_FOREGROUND__';
@@ -194,6 +200,48 @@ export class AdbScreenshots {
     };
   }
 
+  private async captureActionObservationFormat(
+    serial: string,
+    actions: readonly InputSequenceAction[],
+    expectedPackage: string,
+    interActionDelayMs: number,
+    settleMs: number,
+    format: VisualFrameFormat,
+  ): Promise<VisualObservation> {
+    const option = format === 'jpeg' ? '-j' : '-p';
+    const input = buildInputSequenceScript(actions, interActionDelayMs);
+    const settle = settleMs === 0 ? '' : `; sleep ${(settleMs / 1_000).toFixed(3)}`;
+    const observation = `screencap ${option}; printf "\\n${OBSERVATION_MARKER_TEXT}\\n"; dumpsys window windows 2>/dev/null | grep -m 1 "mCurrentFocus=" || dumpsys activity activities 2>/dev/null | grep -m 1 -E "topResumedActivity=|mFocusedApp=|mResumedActivity|ResumedActivity:" || true`;
+    const script = buildForegroundGuardedScript(
+      `${input}${settle}; ${observation}`,
+      expectedPackage,
+    );
+    const output = await this.adb.device(serial, ['exec-out', 'sh', '-c', script], {
+      maxOutputBytes: this.maxBytes + 16_000,
+    });
+    assertInputSequenceOutput(output.stdout, output.stderr);
+    const markerOffset = output.stdout.lastIndexOf(OBSERVATION_MARKER);
+    if (markerOffset < 0) {
+      throw new AppError(
+        ErrorCode.ScreenshotInvalid,
+        'ADB visual action did not contain its observation boundary.',
+        { details: { bytes: output.stdout.length, format } },
+      );
+    }
+    const data = output.stdout.subarray(0, markerOffset);
+    if (data.length > this.maxBytes) {
+      throw new AppError(
+        ErrorCode.ScreenshotTooLarge,
+        'Screenshot exceeds the configured maximum byte size.',
+        { details: { bytes: data.length, maxBytes: this.maxBytes } },
+      );
+    }
+    return {
+      screenshot: this.encode(data, format),
+      foregroundOutput: output.stdout.subarray(markerOffset + OBSERVATION_MARKER.length).toString(),
+    };
+  }
+
   async captureVisual(
     serial: string,
     preferredFormat: VisualFrameFormat = 'jpeg',
@@ -244,5 +292,42 @@ export class AdbScreenshots {
       }
     }
     return this.captureObservationFormat(serial, 'png');
+  }
+
+  async captureVisualAction(
+    serial: string,
+    actions: readonly InputSequenceAction[],
+    expectedPackage: string,
+    interActionDelayMs = 0,
+    settleMs = 0,
+    preferredFormat: VisualFrameFormat = 'jpeg',
+  ): Promise<VisualObservation> {
+    if (preferredFormat === 'jpeg' && this.jpegSupport.get(serial) !== false) {
+      try {
+        const observation = await this.captureActionObservationFormat(
+          serial,
+          actions,
+          expectedPackage,
+          interActionDelayMs,
+          settleMs,
+          'jpeg',
+        );
+        this.jpegSupport.set(serial, true);
+        return observation;
+      } catch (error) {
+        if (this.jpegSupport.get(serial) === true) throw error;
+        const appError = error instanceof AppError ? error : null;
+        if (appError?.code !== ErrorCode.ScreenshotInvalid) throw error;
+        this.jpegSupport.set(serial, false);
+      }
+    }
+    return this.captureActionObservationFormat(
+      serial,
+      actions,
+      expectedPackage,
+      interActionDelayMs,
+      settleMs,
+      'png',
+    );
   }
 }
