@@ -7,6 +7,49 @@ import test from 'node:test';
 import { ErrorCode } from '../../src/errors/codes.js';
 import { ScrcpyProcessManager } from '../../src/scrcpy/process-manager.js';
 import { buildScrcpyArgs, parseVersion } from '../../src/scrcpy/capabilities.js';
+import { extractJpegFrames } from '../../src/scrcpy/frame-stream.js';
+
+function jpeg(width: number, height: number): Buffer {
+  return Buffer.from([
+    0xff,
+    0xd8,
+    0xff,
+    0xc0,
+    0x00,
+    0x11,
+    0x08,
+    (height >> 8) & 0xff,
+    height & 0xff,
+    (width >> 8) & 0xff,
+    width & 0xff,
+    0x03,
+    0x01,
+    0x11,
+    0x00,
+    0x02,
+    0x11,
+    0x00,
+    0x03,
+    0x11,
+    0x00,
+    0xff,
+    0xd9,
+  ]);
+}
+
+test('extracts complete streamed JPEGs and retains a split frame', () => {
+  const first = jpeg(720, 1600);
+  const second = jpeg(360, 800);
+  const split = second.subarray(0, 12);
+  const initial = extractJpegFrames(Buffer.concat([Buffer.from('noise'), first, split]));
+  assert.deepEqual(initial.frames, [first]);
+  assert.deepEqual(initial.remainder, split);
+  const completed = extractJpegFrames(
+    Buffer.concat([initial.remainder, second.subarray(split.length)]),
+  );
+  assert.deepEqual(completed.frames, [second]);
+  assert.equal(completed.remainder.length, 0);
+});
 
 test('parses installed scrcpy versions', () => {
   assert.deepEqual(parseVersion('scrcpy 4.1 <https://github.com/Genymobile/scrcpy>'), {

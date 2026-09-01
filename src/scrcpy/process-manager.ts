@@ -12,12 +12,14 @@ import {
   type ScrcpyCapabilities,
   type ScrcpyStartOptions,
 } from './capabilities.js';
+import { ScrcpyFrameStream, type StreamedFrame } from './frame-stream.js';
 
 interface OwnedScrcpy {
   child: ChildProcess;
   pid: number;
   serial: string;
   args: string[];
+  requestedArgs: string[];
   startedAt: string;
   stderr: string;
   stderrTruncated: boolean;
@@ -25,6 +27,7 @@ interface OwnedScrcpy {
   signal: NodeJS.Signals | null;
   spawnError: string | null;
   detached: boolean;
+  frameStream: ScrcpyFrameStream | null;
 }
 
 export interface ScrcpyStatus {
@@ -40,6 +43,7 @@ export interface ScrcpyStatus {
   diagnosticTruncated: boolean;
   capabilities: ScrcpyCapabilities | null;
   detached: boolean;
+  fastFrames: boolean;
 }
 
 const MIRROR_ENVIRONMENT_KEYS = [
@@ -119,12 +123,30 @@ export class ScrcpyProcessManager {
       this.capabilities ?? (await detectScrcpyCapabilities(this.scrcpyPath, this.runner?.run));
     const args = buildScrcpyArgs(serial, options, capabilities);
     if (isRunning(this.owner)) {
-      if (this.owner.serial === serial && sameArguments(this.owner.args, args)) {
+      if (this.owner.serial === serial && sameArguments(this.owner.requestedArgs, args)) {
         return { alreadyRunning: true, status: this.status() };
       }
       await this.stop();
     }
     this.capabilities = capabilities;
+    let frameStream: ScrcpyFrameStream | null = null;
+    if (this.runner === undefined && !this.leaveRunningOnExit && process.platform !== 'win32') {
+      try {
+        frameStream = new ScrcpyFrameStream();
+        frameStream.start();
+        args.push(
+          '--record',
+          frameStream.pipePath,
+          '--record-format',
+          'mkv',
+          '--video-buffer',
+          '0',
+        );
+      } catch {
+        frameStream?.dispose();
+        frameStream = null;
+      }
+    }
     const child = spawn(this.scrcpyPath, args, {
       shell: false,
       detached: process.platform !== 'win32',
@@ -139,6 +161,7 @@ export class ScrcpyProcessManager {
       pid: child.pid,
       serial,
       args,
+      requestedArgs: buildScrcpyArgs(serial, options, capabilities),
       startedAt: new Date().toISOString(),
       stderr: '',
       stderrTruncated: false,
@@ -146,6 +169,7 @@ export class ScrcpyProcessManager {
       signal: null,
       spawnError: null,
       detached: false,
+      frameStream,
     };
     this.owner = owner;
     child.stderr?.on('data', (chunk: Buffer) => {
@@ -163,6 +187,8 @@ export class ScrcpyProcessManager {
     child.once('close', (exitCode, signal) => {
       owner.exitCode = exitCode;
       owner.signal = signal;
+      owner.frameStream?.dispose();
+      owner.frameStream = null;
     });
     return { alreadyRunning: false, status: this.status() };
   }
@@ -183,6 +209,7 @@ export class ScrcpyProcessManager {
       diagnosticTruncated: owner?.stderrTruncated ?? false,
       capabilities: this.capabilities,
       detached: owner?.detached ?? false,
+      fastFrames: owner?.frameStream?.current() !== null,
     };
   }
 
@@ -190,14 +217,29 @@ export class ScrcpyProcessManager {
     if (this.owner?.serial === serial && isRunning(this.owner)) this.owner.detached = true;
   }
 
+  latestFrame(): StreamedFrame | null {
+    return this.owner?.frameStream?.current() ?? null;
+  }
+
+  async waitForFrame(afterSequence: number, timeoutMs = 1_000): Promise<StreamedFrame | null> {
+    return (await this.owner?.frameStream?.waitForFrame(afterSequence, timeoutMs)) ?? null;
+  }
+
   async stop(): Promise<ScrcpyStatus> {
     const owner = this.owner;
-    if (!isRunning(owner)) return this.status();
+    if (owner === null) return this.status();
+    if (owner.exitCode !== null || owner.signal !== null || owner.spawnError !== null) {
+      owner.frameStream?.dispose();
+      owner.frameStream = null;
+      return this.status();
+    }
     terminate(owner);
     const deadline = Date.now() + 2_000;
     while (isRunning(owner) && Date.now() < deadline)
       await new Promise((resolve) => setTimeout(resolve, 25));
     if (isRunning(owner)) forceTerminate(owner);
+    owner.frameStream?.dispose();
+    owner.frameStream = null;
     return this.status();
   }
 
