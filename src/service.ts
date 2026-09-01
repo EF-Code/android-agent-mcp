@@ -658,17 +658,21 @@ export class AndroidDeviceService {
         details: { pollMs },
       });
     }
-    const inputStarted = performance.now();
-    await this.input.guardedSequence(
+    const actionStarted = performance.now();
+    const observation = await this.screenshots.captureVisualAction(
       serial,
       actions,
       state.foregroundPackage,
       options.interActionDelayMs ?? 0,
+      settleMs,
+      state.frameFormat,
     );
-    const inputMs = Math.round(performance.now() - inputStarted);
-    const settleStarted = performance.now();
-    await this.stabilize(settleMs);
-    const settleElapsedMs = Math.round(performance.now() - settleStarted);
+    const actionElapsedMs = Math.round(performance.now() - actionStarted);
+    const foreground = await this.requireCapturedForeground(
+      observation.foregroundOutput,
+      'visual control observation',
+      serial,
+    );
     const waited = await this.waitForVisualChange(
       serial,
       state.lastScreenshotSha256,
@@ -676,6 +680,7 @@ export class AndroidDeviceService {
       waitForChangeMs,
       stableMs,
       pollMs,
+      { screenshot: observation.screenshot, foreground },
     );
     state.lastScreenshotSha256 = waited.screenshot.sha256;
     state.screenWidth = waited.screenshot.width;
@@ -691,8 +696,8 @@ export class AndroidDeviceService {
       elapsedMs: Math.round(performance.now() - started),
       timingMs: {
         preflight: preflightMs,
-        input: inputMs,
-        settle: settleElapsedMs,
+        input: actionElapsedMs,
+        settle: settleMs,
         observation: waited.elapsedMs,
         postflight: 0,
       },
