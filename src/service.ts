@@ -497,6 +497,7 @@ export class AndroidDeviceService {
     waitForChangeMs: number,
     stableMs: number,
     pollMs: number,
+    initialObservation?: VisualControlFrame,
   ): Promise<{
     screenshot: EncodedScreenshot;
     foreground: ForegroundApp;
@@ -504,13 +505,18 @@ export class AndroidDeviceService {
     elapsedMs: number;
   }> {
     const started = performance.now();
-    let observation = await this.screenshots.captureVisualObservation(serial, frameFormat);
-    let screenshot = observation.screenshot;
-    let foreground = await this.requireCapturedForeground(
-      observation.foregroundOutput,
-      'visual control observation',
-      serial,
-    );
+    let observation =
+      initialObservation === undefined
+        ? await this.screenshots.captureVisualObservation(serial, frameFormat)
+        : null;
+    let screenshot = initialObservation?.screenshot ?? observation!.screenshot;
+    let foreground =
+      initialObservation?.foreground ??
+      (await this.requireCapturedForeground(
+        observation!.foregroundOutput,
+        'visual control observation',
+        serial,
+      ));
     let changed = screenshot.sha256 !== baselineSha256;
     if (waitForChangeMs === 0 || (!changed && performance.now() - started >= waitForChangeMs)) {
       return {
