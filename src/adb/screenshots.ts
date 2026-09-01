@@ -168,7 +168,7 @@ export class AdbScreenshots {
     format: VisualFrameFormat,
   ): Promise<VisualObservation> {
     const option = format === 'jpeg' ? '-j' : '-p';
-    const script = `screencap ${option}; printf "\\n${OBSERVATION_MARKER_TEXT}\\n"; dumpsys window windows | grep -m 1 "mCurrentFocus=" || dumpsys activity activities | grep -m 1 -E "topResumedActivity=|mFocusedApp=|mResumedActivity|ResumedActivity:" || true`;
+    const script = `screencap ${option}; printf "\\n${OBSERVATION_MARKER_TEXT}\\n"; dumpsys window windows 2>/dev/null | grep -m 1 "mCurrentFocus=" || dumpsys activity activities 2>/dev/null | grep -m 1 -E "topResumedActivity=|mFocusedApp=|mResumedActivity|ResumedActivity:" || true`;
     const output = await this.adb.device(serial, ['exec-out', 'sh', '-c', script], {
       maxOutputBytes: this.maxBytes + 16_000,
     });
