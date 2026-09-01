@@ -80,13 +80,13 @@ node /absolute/path/to/android-agent-mcp/dist/index.js
 The easiest path for a published release is:
 
 ```zsh
-npx -y android-agent-mcp@0.4.2 setup
+npx -y android-agent-mcp@0.5.0 setup
 ```
 
 This downloads the package, detects supported hosts, and configures only the hosts whose commands are available. No repository checkout is required. For a reusable global installation:
 
 ```zsh
-npm install --global android-agent-mcp@0.4.2
+npm install --global android-agent-mcp@0.5.0
 android-agent-mcp setup
 ```
 
@@ -97,7 +97,7 @@ Alternatively, let an MCP client download a pinned release when it starts the se
 ```json
 {
   "command": "npx",
-  "args": ["--yes", "android-agent-mcp@0.4.2"]
+  "args": ["--yes", "android-agent-mcp@0.5.0"]
 }
 ```
 
