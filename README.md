@@ -12,7 +12,7 @@ Implemented and locally verified:
 - Automated unit, integration, protocol, and scrcpy tests, plus a separate opt-in physical-device smoke test
 - ADB/scrcpy adapters with injectable command runners
 - Device discovery, explicit selection, screenshots, UIAutomator parsing, semantic selectors, input, app inspection, logcat, scrcpy ownership, and evidence sessions
-- Low-latency quoted input batches, session-pinned geometry, bounded foreground probes, JPEG visual frames with PNG fallback, phase telemetry, and stateful action-observation sessions
+- Persistent scrcpy control and JPEG frame channels with safe ADB fallback, session-pinned geometry, bounded foreground probes, phase telemetry, and stateful action-observation sessions
 - Path-restricted APK installation and approval-gated mutations
 
 Physical-device validation is opt-in and remains a separate gate. The full MCP stdio path has been validated on an authorized Samsung SM-A075F: discovery, selection, device information, visible scrcpy, app launch, screenshot image content, UI dump/find/tap, bounded logcat, evidence completion, and owned-mirror shutdown.
@@ -22,7 +22,7 @@ Physical-device validation is opt-in and remains a separate gate. The full MCP s
 - Linux desktop is the supported initial platform; Manjaro/Arch is the primary tested distribution.
 - Node.js 22 or newer.
 - Android platform-tools (`adb`).
-- `scrcpy` is required by the default visible-mirror workflow; set `ANDROID_AGENT_MCP_MIRROR_AUTO_START=false` for headless operation.
+- `scrcpy` is required by the default visible-mirror workflow; FFmpeg enables the persistent low-latency JPEG stream. Both degrade safely to ADB capture/control when unavailable. Set `ANDROID_AGENT_MCP_MIRROR_AUTO_START=false` for headless operation.
 - A phone with Developer Options and USB debugging enabled, with this host’s RSA key accepted.
 
 The server does not install ADB or scrcpy. Verify the host tools without changing system state:
@@ -191,7 +191,7 @@ For a two-tap visual move inside a session, prefer one call rather than two mode
 }
 ```
 
-The visual session accepts taps, swipes, and allowlisted non-sensitive keys. It guards the foreground package in the same device command as each action, then returns an image plus compact JSON and phase timings from one observation command. Stop it with `visual_control_stop` when finished. Use `screen_input_sequence` for one-off native-pixel batches when a persistent visual loop is unnecessary. Run `npm run benchmark:visual -- --iterations 10 --actions 1` to measure a chess-like single-action path separately from model latency.
+The visual session accepts taps, swipes, and allowlisted non-sensitive keys. With scrcpy and FFmpeg available it keeps persistent control and JPEG channels warm; otherwise it uses the existing foreground-guarded ADB action/capture path. It checks foreground policy before direct input and before returning a streamed frame. Results identify both transports as `scrcpy` or `adb` alongside phase timings. Stop it with `visual_control_stop` when finished. Use `screen_input_sequence` for one-off native-pixel batches when a persistent visual loop is unnecessary. Run `npm run benchmark:visual -- --iterations 10 --actions 1` to measure a chess-like single-action path separately from model latency.
 
 If the selected phone disconnects or becomes unauthorized, the server invalidates retained UI state and requires an explicit `device_select` again after reconnecting, even when the serial is unchanged.
 

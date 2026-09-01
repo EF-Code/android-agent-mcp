@@ -7,8 +7,8 @@ The design follows the continuous frame → structured action → ADB → next-f
 ## Session loop
 
 1. Select one authorized device with `device_select` when needed.
-2. Call `visual_control_start`. The response contains an initial frame, a session ID, display dimensions, MIME type, and the default coordinate space. Visual sessions prefer Android's JPEG capture path and fall back to PNG automatically; pass `frame_format: "png"` only when lossless pixels are required.
-3. Call `visual_control_action` for each visual decision. The server checks the session-pinned foreground package and dispatches the bounded action in one device command, then returns a frame plus the post-action foreground state in one observation command.
+2. Call `visual_control_start`. The response contains an initial frame, a session ID, display dimensions, MIME type, and the default coordinate space. With scrcpy and FFmpeg installed, the server warms a persistent control connection and continuous JPEG stream; otherwise it falls back to bounded ADB capture and input. Pass `frame_format: "png"` only when lossless pixels are required.
+3. Call `visual_control_action` for each visual decision. The server checks the session-pinned foreground package, dispatches the bounded action, and returns the next frame plus post-action foreground state.
 4. Call `visual_control_stop` when the visual task is complete.
 
 Do not call `screen_capture` between visual actions. The image returned by `visual_control_action` is the observation for the next model decision.
@@ -33,7 +33,7 @@ Actions are bounded to at most 32 taps, swipes, or allowlisted non-sensitive key
 
 `wait_for_change_ms` is optional and bounded to 15 seconds. It polls frames only while the screen still matches the previous session frame. `settle_ms` delays the first observation when the app needs time to animate or an opponent needs time to respond. `stable_ms` then requests a quiet-frame window after the first observed change. Keep all three at zero for immediate board actions; add only the shortest delay the app genuinely needs.
 
-The result reports `elapsed_ms`, `wait_elapsed_ms`, `changed`, the frame hash/MIME type, and `timing_ms` split into preflight, input, settle, observation, and postflight. That distinguishes device overhead from the model's reasoning/tool-call latency.
+The result reports `elapsed_ms`, `wait_elapsed_ms`, `changed`, `input_transport`, `frame_transport`, the frame hash/MIME type, and `timing_ms` split into preflight, input, settle, observation, and postflight. That distinguishes device overhead and fast-path use from the model's reasoning/tool-call latency.
 
 ## Physical latency benchmark
 
@@ -63,6 +63,6 @@ npm run benchmark:visual -- --iterations 10 --frame-format png
 - Foreground package policy is checked before actions and after returned frames; sensitive packages remain blocked by default.
 - UI hierarchy verification is intentionally not performed in this visual path.
 - Screenshot content is returned with the action, avoiding an extra MCP round trip.
-- Single actions use direct ADB argument arrays; multi-action batches use a validated, quoted remote script and reject Android input usage output instead of reporting false success.
+- When available, persistent scrcpy control injects taps, swipes, and keys without launching `adb shell input` for every action. The validated foreground-guarded ADB path remains the fallback.
 - The session does not make model reasoning faster. Use the host's low-latency or low-thinking mode when available and keep one model decision per visual action.
 - Use semantic `ui_dump`/`ui_find`/`ui_tap` for ordinary controls; do not use visual sessions as a replacement for accessibility-aware interaction.
