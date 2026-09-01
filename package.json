@@ -58,6 +58,10 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
+    "@yume-chan/adb": "3.0.0-beta.2",
+    "@yume-chan/adb-scrcpy": "3.0.0-beta.2",
+    "@yume-chan/adb-server-node-tcp": "3.0.0-beta.2",
+    "@yume-chan/scrcpy": "3.0.0-beta.2",
     "fast-xml-parser": "^5.10.1",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
