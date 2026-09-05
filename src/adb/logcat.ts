@@ -89,6 +89,19 @@ function parseCrashBlocks(text: string): CrashEvidence[] {
   });
 }
 
+function filterCrashTextForPackage(text: string, packageName: string): string {
+  return redactLogText(text)
+    .split(/(?=FATAL EXCEPTION|ANR in )/u)
+    .filter((block) => {
+      const attributed =
+        /Process:\s*([^,\s]+),\s*PID:/u.exec(block)?.[1] ??
+        /ANR in\s+([^\s{]+)/u.exec(block)?.[1] ??
+        null;
+      return attributed === packageName;
+    })
+    .join('\n');
+}
+
 export class AdbLogcat {
   constructor(
     private readonly adb: AdbClient,
@@ -105,6 +118,13 @@ export class AdbLogcat {
   }
 
   async capture(serial: string, options: LogCaptureOptions = {}): Promise<LogCapture> {
+    if (options.includeCrashBuffer === true && options.packageName === undefined) {
+      throw new AppError(
+        ErrorCode.InvalidInput,
+        'Crash-buffer capture requires an authorized package name.',
+      );
+    }
+    const crashPackageName = options.includeCrashBuffer === true ? options.packageName : undefined;
     const durationMs = validateDuration(options.durationMs ?? 1_000, 'durationMs', 30_000);
     const maxLines = Math.min(Math.max(options.maxLines ?? 500, 1), 20_000);
     const maxBytes = Math.min(
@@ -163,7 +183,7 @@ export class AdbLogcat {
         },
       );
       const crashLines = splitLines(
-        crash.stdout.toString('utf8'),
+        filterCrashTextForPackage(crash.stdout.toString('utf8'), crashPackageName!),
         maxLines - lines.length,
         maxBytes - Buffer.byteLength(lines.join('\n')),
       );

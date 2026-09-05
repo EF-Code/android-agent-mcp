@@ -63,3 +63,59 @@ ANR in unknown.process
   assert.equal(crashes.length, 1);
   assert.equal(crashes[0]?.processPackage, 'com.example.app');
 });
+
+test('filters optional crash-buffer text to the requested package', async () => {
+  let calls = 0;
+  const runner = {
+    run: async () => {
+      calls += 1;
+      const stdout =
+        calls === 1
+          ? Buffer.from('')
+          : Buffer.from(`FATAL EXCEPTION: main
+Process: com.example.app, PID: 4321
+java.lang.IllegalStateException: target
+
+FATAL EXCEPTION: main
+Process: com.other.app, PID: 9876
+java.lang.IllegalStateException: unrelated
+`);
+      return {
+        stdout,
+        stderr: Buffer.alloc(0),
+        record: {
+          executable: 'adb',
+          args: [],
+          exitCode: 0,
+          signal: null,
+          durationMs: 1,
+          stdoutBytes: stdout.length,
+          stderrBytes: 0,
+          stdoutTruncated: false,
+          stderrTruncated: false,
+        },
+      };
+    },
+  };
+  const logcat = new AdbLogcat(
+    new AdbClient({ adbPath: 'adb', defaultTimeoutMs: 1_000, maxOutputBytes: 64_000, runner }),
+    64_000,
+  );
+
+  const capture = await logcat.capture('serial', {
+    packageName: 'com.example.app',
+    pid: 4321,
+    since: '09-05 10:00:00.000',
+    includeCrashBuffer: true,
+  });
+  assert.match(capture.text, /target/u);
+  assert.doesNotMatch(capture.text, /unrelated|com\.other\.app/u);
+});
+
+test('rejects crash-buffer capture without a package identity', async () => {
+  const logcat = new AdbLogcat(undefined as never, 64_000);
+  await assert.rejects(
+    () => logcat.capture('serial', { pid: 4321, includeCrashBuffer: true }),
+    /requires an authorized package name/u,
+  );
+});

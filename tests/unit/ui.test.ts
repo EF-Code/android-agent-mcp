@@ -18,11 +18,12 @@ function snapshot(xml: string) {
 
 test('normalizes hierarchy nodes, relations, centers, and password redaction', () => {
   const result = snapshot(
-    `<hierarchy rotation="0"><node class="android.widget.FrameLayout" package="com.example.app" bounds="[0,0][1080,2400]" enabled="true" visible-to-user="true"><node class="android.widget.EditText" package="com.example.app" text="secret-value" password="true" focused="true" enabled="true" bounds="[10,20][210,120]" resource-id="com.example.app:id/password"/><node class="android.widget.Button" package="com.example.app" text="Continue" clickable="true" enabled="true" bounds="[10,150][300,260]"/></node></hierarchy>`,
+    `<hierarchy rotation="0"><node class="android.widget.FrameLayout" package="com.example.app" bounds="[0,0][1080,2400]" enabled="true" visible-to-user="true"><node class="android.widget.EditText" package="com.example.app" text="secret-value" content-desc="secret-description" password="true" focused="true" enabled="true" bounds="[10,20][210,120]" resource-id="com.example.app:id/password"/><node class="android.widget.Button" package="com.example.app" text="Continue" clickable="true" enabled="true" bounds="[10,150][300,260]"/></node></hierarchy>`,
   );
 
   assert.equal(result.nodes.length, 3);
   assert.equal(result.nodes[1]?.text, '[REDACTED]');
+  assert.equal(result.nodes[1]?.contentDescription, '[REDACTED]');
   assert.equal(result.nodes[1]?.parentId, 'node-0');
   assert.deepEqual(result.nodes[2]?.center, { x: 155, y: 205 });
   assert.deepEqual(result.nodes[0]?.childIds, ['node-0.0', 'node-0.1']);

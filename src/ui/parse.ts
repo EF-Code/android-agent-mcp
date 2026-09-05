@@ -139,7 +139,7 @@ export function parseUiAutomatorXml(
     const className = attribute(record, 'class');
     const packageName = attribute(record, 'package');
     const text = redactUiText(attribute(record, 'text'), nodeFlags.password);
-    const contentDescription = attribute(record, 'content-desc');
+    const contentDescription = redactUiText(attribute(record, 'content-desc'), nodeFlags.password);
     const resourceId = attribute(record, 'resource-id');
     const bounds = parseBounds(attribute(record, 'bounds'));
     const childIds: string[] = [];
