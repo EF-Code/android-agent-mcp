@@ -36,6 +36,7 @@ import {
 import type { ScrcpyStartOptions } from './scrcpy/capabilities.js';
 import { ScrcpyDirectControl } from './scrcpy/direct-control.js';
 import { ScrcpyProcessManager } from './scrcpy/process-manager.js';
+import { OperationCoordinator } from './service/operation-coordinator.js';
 
 const STARTUP_WAIT_MS = 200;
 
@@ -127,6 +128,7 @@ interface VisualControlSessionState {
 }
 
 export class AndroidDeviceService {
+  readonly operations = new OperationCoordinator();
   readonly adb: AdbClient;
   readonly devices: DeviceManager;
   readonly policy: Policy;

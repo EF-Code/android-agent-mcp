@@ -30,6 +30,7 @@ export const ErrorCode = {
   ScrcpyNotOwned: 'SCRCPY_NOT_OWNED',
   ScreenshotInvalid: 'SCREENSHOT_INVALID',
   ScreenshotTooLarge: 'SCREENSHOT_TOO_LARGE',
+  ServerBusy: 'SERVER_BUSY',
   SensitivePackage: 'SENSITIVE_PACKAGE',
   SessionConflict: 'SESSION_CONFLICT',
   StaleUiSnapshot: 'STALE_UI_SNAPSHOT',

@@ -159,15 +159,22 @@ function registerTool<Args extends ZodRawShapeCompat>(
   callback: ToolCallback<Args>,
 ): void {
   const wrapped = (async (...callbackArgs: Parameters<ToolCallback<Args>>) => {
-    const activeBefore = service.evidence.activeSession;
-    if (activeBefore !== null) await activeBefore.action('tool_call', { tool: name });
     try {
-      return await Reflect.apply(callback, undefined, callbackArgs);
-    } finally {
-      const activeAfter = service.evidence.activeSession;
-      if (activeBefore === null && activeAfter !== null) {
-        await activeAfter.action('tool_call', { tool: name });
-      }
+      const extra = callbackArgs.at(-1) as { signal: AbortSignal };
+      return await service.operations.run(name, extra.signal, async () => {
+        const activeBefore = service.evidence.activeSession;
+        if (activeBefore !== null) await activeBefore.action('tool_call', { tool: name });
+        try {
+          return await Reflect.apply(callback, undefined, callbackArgs);
+        } finally {
+          const activeAfter = service.evidence.activeSession;
+          if (activeBefore === null && activeAfter !== null) {
+            await activeAfter.action('tool_call', { tool: name });
+          }
+        }
+      });
+    } catch (error) {
+      return toolError(error);
     }
   }) as ToolCallback<Args>;
   server.registerTool(name, { ...config, annotations: toolMetadata(name).annotations }, wrapped);
