@@ -142,7 +142,7 @@ test('captures a visual frame and foreground state in one ADB round trip', async
   assert.match(calls[0]?.[5] ?? '', /mCurrentFocus=/u);
 });
 
-test('executes guarded input and captures its result in one ADB round trip', async () => {
+test('probes once then executes guarded input and captures its result atomically', async () => {
   const frame = jpeg(720, 1600);
   const foreground = 'mCurrentFocus=Window{123 u0 com.example.app/.MainActivity}\n';
   const combined = Buffer.concat([
@@ -186,14 +186,115 @@ test('executes guarded input and captures its result in one ADB round trip', asy
 
   assert.equal(observation.screenshot.mimeType, 'image/jpeg');
   assert.equal(observation.foregroundOutput, foreground);
-  assert.equal(calls.length, 1);
-  const script = calls[0]?.[5] ?? '';
-  assert.deepEqual(calls[0]?.slice(0, 5), ['-s', 'serial-1', 'exec-out', 'sh', '-c']);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0], ['-s', 'serial-1', 'exec-out', 'screencap', '-j']);
+  const script = calls[1]?.[5] ?? '';
+  assert.deepEqual(calls[1]?.slice(0, 5), ['-s', 'serial-1', 'exec-out', 'sh', '-c']);
   assert.match(script, /current_package/u);
   assert.match(script, /input tap 100 200/u);
   assert.match(script, /sleep 0\.075/u);
   assert.match(script, /screencap -j/u);
   assert.match(script, /__ANDROID_AGENT_MCP_FOREGROUND__/u);
+});
+
+test('probes JPEG support before input so PNG fallback never replays an action', async () => {
+  const frame = png(720, 1600);
+  const foreground = 'mCurrentFocus=Window{123 u0 com.example.app/.MainActivity}\n';
+  const calls: string[][] = [];
+  const adb = new AdbClient({
+    adbPath: 'fake-adb',
+    defaultTimeoutMs: 5_000,
+    maxOutputBytes: 16_000,
+    runner: {
+      run: async (_executable, args) => {
+        calls.push([...args]);
+        const last = args.at(-1) ?? '';
+        const stdout =
+          last === '-j'
+            ? Buffer.from('unsupported jpeg')
+            : last === '-p'
+              ? frame
+              : Buffer.concat([
+                  frame,
+                  Buffer.from(`\n__ANDROID_AGENT_MCP_FOREGROUND__\n${foreground}`),
+                ]);
+        return {
+          stdout,
+          stderr: Buffer.alloc(0),
+          record: {
+            executable: 'fake-adb',
+            args: [...args],
+            exitCode: 0,
+            signal: null,
+            durationMs: 0,
+            stdoutBytes: stdout.length,
+            stderrBytes: 0,
+            stdoutTruncated: false,
+            stderrTruncated: false,
+          },
+        };
+      },
+    },
+  });
+
+  const observation = await new AdbScreenshots(adb, 2_048).captureVisualAction(
+    'serial-1',
+    [{ type: 'tap', x: 100, y: 200 }],
+    'com.example.app',
+  );
+
+  assert.equal(observation.screenshot.mimeType, 'image/png');
+  assert.equal(observation.foregroundOutput, foreground);
+  const actionScripts = calls.filter((args) => /input tap 100 200/u.test(args.at(-1) ?? ''));
+  assert.equal(actionScripts.length, 1);
+  assert.match(actionScripts[0]?.at(-1) ?? '', /screencap -p/u);
+  assert.deepEqual(
+    calls.slice(0, 2).map((args) => args.at(-1)),
+    ['-j', '-p'],
+  );
+});
+
+test('does not retry input when a known JPEG action observation is invalid', async () => {
+  const calls: string[][] = [];
+  const frame = jpeg(720, 1600);
+  const adb = new AdbClient({
+    adbPath: 'fake-adb',
+    defaultTimeoutMs: 5_000,
+    maxOutputBytes: 16_000,
+    runner: {
+      run: async (_executable, args) => {
+        calls.push([...args]);
+        const stdout = args.at(-1) === '-j' ? frame : Buffer.from('invalid observation');
+        return {
+          stdout,
+          stderr: Buffer.alloc(0),
+          record: {
+            executable: 'fake-adb',
+            args: [...args],
+            exitCode: 0,
+            signal: null,
+            durationMs: 0,
+            stdoutBytes: stdout.length,
+            stderrBytes: 0,
+            stdoutTruncated: false,
+            stderrTruncated: false,
+          },
+        };
+      },
+    },
+  });
+  const screenshots = new AdbScreenshots(adb, 2_048);
+
+  await assert.rejects(() =>
+    screenshots.captureVisualAction(
+      'serial-1',
+      [{ type: 'tap', x: 100, y: 200 }],
+      'com.example.app',
+    ),
+  );
+
+  assert.equal(calls.filter((args) => /input tap/u.test(args.at(-1) ?? '')).length, 1);
+  assert.equal(calls.length, 2);
 });
 
 test('caches PNG fallback when Android does not support JPEG screencap', async () => {

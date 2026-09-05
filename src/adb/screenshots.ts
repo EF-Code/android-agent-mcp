@@ -302,6 +302,12 @@ export class AdbScreenshots {
     settleMs = 0,
     preferredFormat: VisualFrameFormat = 'jpeg',
   ): Promise<VisualObservation> {
+    // Capability discovery must never share a command with device input. If an
+    // unknown device rejects or corrupts JPEG output, probe it first with an
+    // observation-only capture so PNG fallback cannot replay the action.
+    if (preferredFormat === 'jpeg' && this.jpegSupport.get(serial) === undefined) {
+      await this.captureVisual(serial, 'jpeg');
+    }
     if (preferredFormat === 'jpeg' && this.jpegSupport.get(serial) !== false) {
       try {
         const observation = await this.captureActionObservationFormat(
@@ -315,10 +321,9 @@ export class AdbScreenshots {
         this.jpegSupport.set(serial, true);
         return observation;
       } catch (error) {
-        if (this.jpegSupport.get(serial) === true) throw error;
-        const appError = error instanceof AppError ? error : null;
-        if (appError?.code !== ErrorCode.ScreenshotInvalid) throw error;
-        this.jpegSupport.set(serial, false);
+        // Input has already been submitted. Retrying this combined command in
+        // another format could duplicate a tap, swipe, or key press.
+        throw error;
       }
     }
     return this.captureActionObservationFormat(
