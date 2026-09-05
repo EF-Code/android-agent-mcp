@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.1 - 2026-09-05
+
+### Reliability
+
+- Prevent visual-action fallback from replaying input, serialize selected-device operations, and bound fast-frame decode failures.
+- Finalize and retain only completed application-owned evidence sessions, with isolated UI hierarchy dump paths.
+- Reject malformed configuration overrides before they can silently weaken runtime policy.
+
+### Privacy and validation
+
+- Redact password accessibility descriptions and restrict crash-buffer capture to the selected package.
+- Run CI on Node.js 22 and 24 with clean generated test output.
+
 ## 0.5.0 - 2026-09-01
 
 ### Performance
