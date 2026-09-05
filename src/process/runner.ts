@@ -110,6 +110,8 @@ export async function runCommand(
   const stderrParts: Buffer[] = [];
   let stdoutBytes = 0;
   let stderrBytes = 0;
+  let stdoutStoredBytes = 0;
+  let stderrStoredBytes = 0;
   let stdoutTruncated = false;
   let stderrTruncated = false;
   let failure: AppError | undefined;
@@ -138,16 +140,18 @@ export async function runCommand(
   const append = (target: 'stdout' | 'stderr', chunk: Buffer): void => {
     if (target === 'stdout') {
       stdoutBytes += chunk.length;
-      if (Buffer.concat(stdoutParts).length < options.maxOutputBytes) {
-        const remaining = options.maxOutputBytes - Buffer.concat(stdoutParts).length;
+      if (stdoutStoredBytes < options.maxOutputBytes) {
+        const remaining = options.maxOutputBytes - stdoutStoredBytes;
         stdoutParts.push(chunk.subarray(0, remaining));
+        stdoutStoredBytes += Math.min(chunk.length, remaining);
       }
       if (stdoutBytes > options.maxOutputBytes) stdoutTruncated = true;
     } else {
       stderrBytes += chunk.length;
-      if (Buffer.concat(stderrParts).length < options.maxOutputBytes) {
-        const remaining = options.maxOutputBytes - Buffer.concat(stderrParts).length;
+      if (stderrStoredBytes < options.maxOutputBytes) {
+        const remaining = options.maxOutputBytes - stderrStoredBytes;
         stderrParts.push(chunk.subarray(0, remaining));
+        stderrStoredBytes += Math.min(chunk.length, remaining);
       }
       if (stderrBytes > options.maxOutputBytes) stderrTruncated = true;
     }

@@ -84,3 +84,15 @@ test('does not invoke a shell for metacharacter arguments', async () => {
   );
   await assert.rejects(() => access(marker));
 });
+
+test('collects many output chunks without changing byte accounting', async () => {
+  const chunks = 2_000;
+  const result = await runCommand(
+    process.execPath,
+    ['-e', `for (let i = 0; i < ${chunks}; i += 1) process.stdout.write('x')`],
+    { timeoutMs: 5_000, maxOutputBytes: 16_000 },
+  );
+  assert.equal(result.stdout.length, chunks);
+  assert.equal(result.record.stdoutBytes, chunks);
+  assert.equal(result.record.stdoutTruncated, false);
+});
