@@ -41,6 +41,7 @@ const configInputSchema = z
         audio: z.boolean(),
         leaveRunningOnExit: z.boolean(),
       })
+      .strict()
       .partial(),
   })
   .partial()
@@ -59,20 +60,27 @@ function splitList(value: string | undefined): string[] | undefined {
     .filter((item) => item.length > 0);
 }
 
-function numberEnv(value: string | undefined): number | undefined {
+function numberEnv(value: string | undefined, name: string): number | undefined {
   if (value === undefined) {
     return undefined;
   }
 
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
+    throw new AppError(ErrorCode.ConfigurationInvalid, `Environment variable ${name} is invalid.`, {
+      details: { name, expected: 'finite integer' },
+    });
+  }
+  return parsed;
 }
 
-function booleanEnv(value: string | undefined): boolean | undefined {
+function booleanEnv(value: string | undefined, name: string): boolean | undefined {
   if (value === undefined) return undefined;
   if (value === 'true') return true;
   if (value === 'false') return false;
-  return undefined;
+  throw new AppError(ErrorCode.ConfigurationInvalid, `Environment variable ${name} is invalid.`, {
+    details: { name, expected: 'true or false' },
+  });
 }
 
 function environmentValue(env: NodeJS.ProcessEnv, ...names: string[]): string | undefined {
@@ -95,7 +103,10 @@ function environmentOverrides(env: NodeJS.ProcessEnv): ConfigInput {
   const sensitivePackages = splitList(value('SENSITIVE_PACKAGES'));
   const allowedRuntimePermissions = splitList(value('ALLOWED_RUNTIME_PERMISSIONS'));
   const allowedApkRoots = splitList(value('ALLOWED_APK_ROOTS'));
-  const mirrorAutoStart = booleanEnv(value('MIRROR_AUTO_START'));
+  const mirrorAutoStart = booleanEnv(
+    value('MIRROR_AUTO_START'),
+    'ANDROID_AGENT_MCP_MIRROR_AUTO_START',
+  );
 
   const adbPath = value('ADB_PATH');
   const scrcpyPath = value('SCRCPY_PATH');
@@ -105,7 +116,7 @@ function environmentOverrides(env: NodeJS.ProcessEnv): ConfigInput {
   if (adbPath !== undefined) overrides.adbPath = adbPath;
   if (scrcpyPath !== undefined) overrides.scrcpyPath = scrcpyPath;
   if (autoSelect !== undefined) {
-    overrides.autoSelectSingleDevice = autoSelect === 'true';
+    overrides.autoSelectSingleDevice = booleanEnv(autoSelect, 'ANDROID_AGENT_MCP_AUTO_SELECT')!;
   }
   if (allowedPackages !== undefined) overrides.allowedPackages = allowedPackages;
   if (sensitivePackages !== undefined) overrides.sensitivePackages = sensitivePackages;
@@ -132,7 +143,7 @@ function environmentOverrides(env: NodeJS.ProcessEnv): ConfigInput {
   ];
 
   for (const [field, variable] of numericFields) {
-    const numericValue = numberEnv(value(variable));
+    const numericValue = numberEnv(value(variable), `ANDROID_AGENT_MCP_${variable}`);
     if (numericValue !== undefined) {
       overrides[field] = numericValue as never;
     }

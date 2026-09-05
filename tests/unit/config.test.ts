@@ -110,3 +110,32 @@ test('rejects relative APK roots in config', async () => {
   await writeFile(configPath, JSON.stringify({ allowedApkRoots: ['relative/path'] }));
   assert.throws(() => loadConfig({ configPath, env: {} }));
 });
+
+test('rejects malformed numeric and boolean environment overrides', () => {
+  for (const env of [
+    { ANDROID_AGENT_MCP_MAX_LOG_BYTES: 'nonsense' },
+    { ANDROID_AGENT_MCP_DEFAULT_TIMEOUT_MS: '5000.5' },
+    { ANDROID_AGENT_MCP_MIRROR_AUTO_START: 'yes' },
+    { ANDROID_AGENT_MCP_AUTO_SELECT: 'FALSE' },
+  ]) {
+    assert.throws(() => loadConfig({ env }), /Environment variable/u);
+  }
+});
+
+test('does not fall through when a higher-precedence environment value is invalid', () => {
+  assert.throws(() =>
+    loadConfig({
+      env: {
+        ANDROID_AGENT_MCP_DEFAULT_TIMEOUT_MS: 'invalid',
+        ANDROID_MCP_DEFAULT_TIMEOUT_MS: '5000',
+      },
+    }),
+  );
+});
+
+test('rejects unknown nested mirror configuration keys', async () => {
+  const root = await mkdtemp(join('/tmp', 'android-device-config-'));
+  const configPath = join(root, 'config.json');
+  await writeFile(configPath, JSON.stringify({ mirror: { unknownSetting: true } }));
+  assert.throws(() => loadConfig({ configPath, env: {} }));
+});
