@@ -17,7 +17,7 @@ The server starts with broad non-sensitive phone-control defaults and accepts an
 | `maxLogBytes`               | `ANDROID_AGENT_MCP_MAX_LOG_BYTES`                 | Maximum log capture size                                                      |
 | `maxCommandOutputBytes`     | `ANDROID_AGENT_MCP_MAX_COMMAND_OUTPUT_BYTES`      | Per-command stdout/stderr limit                                               |
 | `maxEvidenceBytes`          | `ANDROID_AGENT_MCP_MAX_EVIDENCE_BYTES`            | Evidence session byte budget                                                  |
-| `maxEvidenceFiles`          | `ANDROID_AGENT_MCP_MAX_EVIDENCE_FILES`            | Evidence file budget                                                          |
+| `maxEvidenceFiles`          | `ANDROID_AGENT_MCP_MAX_EVIDENCE_FILES`            | Evidence file budget, including reserved internal metadata                    |
 | `evidenceRetentionMaxAgeMs` | `ANDROID_AGENT_MCP_EVIDENCE_RETENTION_MAX_AGE_MS` | Maximum age of completed evidence directories before safe root-scoped cleanup |
 | `defaultTimeoutMs`          | `ANDROID_AGENT_MCP_DEFAULT_TIMEOUT_MS`            | Default ADB command timeout                                                   |
 | `uiSnapshotMaxAgeMs`        | `ANDROID_AGENT_MCP_UI_SNAPSHOT_MAX_AGE_MS`        | Semantic snapshot freshness window                                            |

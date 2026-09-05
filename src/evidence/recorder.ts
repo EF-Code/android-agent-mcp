@@ -5,6 +5,7 @@ import {
   readFile,
   readdir,
   realpath,
+  rename,
   rm,
   stat,
   writeFile,
@@ -42,6 +43,54 @@ export interface EvidenceSummary {
   files: EvidenceFileDigest[];
 }
 
+const EVIDENCE_STATE_FILE = '.android-agent-mcp-session.json';
+const EVIDENCE_PRODUCER = 'android-agent-mcp';
+
+interface EvidenceState {
+  producer: typeof EVIDENCE_PRODUCER;
+  schemaVersion: 1;
+  evidenceId: string;
+  state: 'active' | 'completed';
+  startedAt: string;
+  completedAt?: string;
+}
+
+function parseEvidenceState(value: unknown): EvidenceState | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const state = value as Record<string, unknown>;
+  if (
+    state.producer !== EVIDENCE_PRODUCER ||
+    state.schemaVersion !== 1 ||
+    typeof state.evidenceId !== 'string' ||
+    (state.state !== 'active' && state.state !== 'completed') ||
+    typeof state.startedAt !== 'string' ||
+    (state.state === 'completed' && typeof state.completedAt !== 'string')
+  ) {
+    return null;
+  }
+  const startedAt = Date.parse(state.startedAt);
+  const completedAt =
+    typeof state.completedAt === 'string' ? Date.parse(state.completedAt) : undefined;
+  if (
+    !Number.isFinite(startedAt) ||
+    (state.state === 'completed' &&
+      (completedAt === undefined || !Number.isFinite(completedAt) || completedAt < startedAt))
+  ) {
+    return null;
+  }
+  return state as unknown as EvidenceState;
+}
+
+async function writeEvidenceState(directory: string, state: EvidenceState): Promise<void> {
+  const target = join(directory, EVIDENCE_STATE_FILE);
+  const temporary = `${target}.${randomUUID()}.tmp`;
+  await writeFile(temporary, `${JSON.stringify(state, null, 2)}\n`, {
+    flag: 'wx',
+    mode: 0o600,
+  });
+  await rename(temporary, target);
+}
+
 function withinRoot(candidate: string, root: string): boolean {
   const relativePath = relative(root, candidate);
   return relativePath === '' || (!relativePath.startsWith('..') && !isAbsolute(relativePath));
@@ -70,9 +119,12 @@ function maskSerial(serial: string): string {
 function sanitizedManifest(
   input: EvidenceManifestInput,
   startedAt: string,
+  evidenceId: string,
 ): Record<string, unknown> {
   return {
     formatVersion: 1,
+    producer: EVIDENCE_PRODUCER,
+    evidenceId,
     startedAt,
     serverVersion: input.serverVersion,
     adbVersion: input.adbVersion,
@@ -98,6 +150,7 @@ export class EvidenceSession {
   private pausedReason: string | null = null;
   private finishing = false;
   private finishPromise: Promise<EvidenceSummary> | null = null;
+  private completionAt: string | null = null;
 
   constructor(
     readonly evidenceId: string,
@@ -105,6 +158,9 @@ export class EvidenceSession {
     readonly startedAt: string,
     private readonly maxBytes: number,
     private readonly maxFiles: number,
+    private readonly recordCompletion: (completedAt: string) => Promise<void> = async () =>
+      undefined,
+    private readonly reservedMetadataFiles = 0,
   ) {}
 
   get summary(): EvidenceSummary {
@@ -135,7 +191,7 @@ export class EvidenceSession {
 
   async writeManifest(input: EvidenceManifestInput): Promise<void> {
     const bytes = Buffer.from(
-      `${JSON.stringify(sanitizedManifest(input, this.startedAt), null, 2)}\n`,
+      `${JSON.stringify(sanitizedManifest(input, this.startedAt, this.evidenceId), null, 2)}\n`,
     );
     this.files.push(await this.writeFile('manifest.json', bytes));
   }
@@ -197,7 +253,7 @@ export class EvidenceSession {
   }
 
   private async completeFinish(): Promise<EvidenceSummary> {
-    const completedAt = new Date().toISOString();
+    const completedAt = (this.completionAt ??= new Date().toISOString());
     const actionsPath = join(this.directory, 'actions.jsonl');
     try {
       const actionBytes = await readFile(actionsPath);
@@ -227,8 +283,11 @@ export class EvidenceSession {
         ? ['None recorded.']
         : this.warnings.map((warning) => `- ${warning.code}: ${warning.message}`)),
     ];
-    const summaryBytes = Buffer.from(`${lines.join('\n')}\n`);
-    this.files.push(await this.writeFile('summary.md', summaryBytes));
+    if (!this.files.some((file) => file.path === 'summary.md')) {
+      const summaryBytes = Buffer.from(`${lines.join('\n')}\n`);
+      this.files.push(await this.writeFile('summary.md', summaryBytes));
+    }
+    await this.recordCompletion(completedAt);
     this.finishedAt = completedAt;
     this.finishing = false;
     return this.summary;
@@ -270,7 +329,7 @@ export class EvidenceSession {
         'Evidence path escapes the session directory.',
       );
     }
-    if (this.files.length >= this.maxFiles) {
+    if (this.files.length + this.reservedMetadataFiles >= this.maxFiles) {
       throw new AppError(ErrorCode.EvidencePathInvalid, 'Evidence file count limit was reached.');
     }
     const currentBytes = this.files.reduce((total, file) => total + file.bytes, 0);
@@ -297,7 +356,7 @@ export class EvidenceSession {
         'Evidence parent directory escapes the session directory.',
       );
     }
-    await writeFile(target, bytes, { flag: 'wx' });
+    await writeFile(target, bytes, { flag: 'wx', mode: 0o600 });
     return digestFile(relativePath, bytes);
   }
 }
@@ -313,6 +372,13 @@ export class EvidenceManager {
   ) {}
 
   async begin(input: EvidenceManifestInput, label = 'session'): Promise<EvidenceSession> {
+    if (this.maxFiles < 3) {
+      throw new AppError(
+        ErrorCode.ConfigurationInvalid,
+        'Evidence file limit must reserve space for session metadata, manifest, and summary.',
+        { details: { maxFiles: this.maxFiles, minimum: 3 } },
+      );
+    }
     if (this.active !== null) {
       throw new AppError(ErrorCode.SessionConflict, 'An evidence session is already active.', {
         details: { evidenceId: this.active.evidenceId },
@@ -323,15 +389,31 @@ export class EvidenceManager {
     const directory = resolve(this.evidenceRoot, evidenceId);
     if (!withinRoot(directory, resolve(this.evidenceRoot)))
       throw new AppError(ErrorCode.EvidencePathInvalid, 'Evidence session path is invalid.');
-    await mkdir(this.evidenceRoot, { recursive: true });
+    await mkdir(this.evidenceRoot, { recursive: true, mode: 0o700 });
     await this.pruneExpired();
-    await mkdir(directory, { recursive: false });
+    await mkdir(directory, { recursive: false, mode: 0o700 });
+    const startedAt = new Date().toISOString();
+    const activeState: EvidenceState = {
+      producer: EVIDENCE_PRODUCER,
+      schemaVersion: 1,
+      evidenceId,
+      state: 'active',
+      startedAt,
+    };
+    await writeEvidenceState(directory, activeState);
     const session = new EvidenceSession(
       evidenceId,
       directory,
-      new Date().toISOString(),
+      startedAt,
       this.maxBytes,
       this.maxFiles,
+      async (completedAt) =>
+        writeEvidenceState(directory, {
+          ...activeState,
+          state: 'completed',
+          completedAt,
+        }),
+      1,
     );
     this.active = session;
     try {
@@ -376,8 +458,39 @@ export class EvidenceManager {
       if (!entry.isDirectory()) continue;
       const candidate = resolve(root, entry.name);
       if (!withinRoot(candidate, root)) continue;
-      const details = await stat(candidate);
-      if (details.mtimeMs < cutoff) await rm(candidate, { recursive: true, force: true });
+      let state: EvidenceState | null = null;
+      try {
+        state = parseEvidenceState(
+          JSON.parse(await readFile(join(candidate, EVIDENCE_STATE_FILE), 'utf8')) as unknown,
+        );
+      } catch {
+        continue;
+      }
+      if (state?.evidenceId !== entry.name || state.state !== 'completed') continue;
+      try {
+        const manifest = JSON.parse(
+          await readFile(join(candidate, 'manifest.json'), 'utf8'),
+        ) as Record<string, unknown>;
+        if (
+          manifest.producer !== EVIDENCE_PRODUCER ||
+          manifest.formatVersion !== 1 ||
+          manifest.evidenceId !== state.evidenceId ||
+          manifest.startedAt !== state.startedAt
+        ) {
+          continue;
+        }
+      } catch {
+        continue;
+      }
+      const completedAt = Date.parse(state.completedAt!);
+      if (!Number.isFinite(completedAt) || completedAt >= cutoff) continue;
+      try {
+        const summary = await stat(join(candidate, 'summary.md'));
+        if (!summary.isFile()) continue;
+      } catch {
+        continue;
+      }
+      await rm(candidate, { recursive: true, force: true });
     }
   }
 }

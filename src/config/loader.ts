@@ -23,7 +23,7 @@ const configInputSchema = z
     maxLogBytes: z.number().int().min(1_024).max(50_000_000),
     maxCommandOutputBytes: z.number().int().min(1_024).max(100_000_000),
     maxEvidenceBytes: z.number().int().min(1_024).max(1_000_000_000),
-    maxEvidenceFiles: z.number().int().min(1).max(10_000),
+    maxEvidenceFiles: z.number().int().min(3).max(10_000),
     evidenceRetentionMaxAgeMs: z
       .number()
       .int()

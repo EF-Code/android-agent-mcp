@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, stat, symlink, utimes } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, stat, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -87,19 +87,128 @@ test('pauses recording and digests action and summary files', async () => {
   assert.ok((await readFile(summary.summaryPath, 'utf8')).includes('EVIDENCE_PAUSED'));
 });
 
-test('prunes only expired evidence directories below the configured root', async () => {
+test('prunes only recognized completed evidence and preserves unrelated directories', async () => {
   const root = await mkdtemp(join(tmpdir(), 'android-agent-mcp-'));
   const oldDirectory = join(root, 'old-session');
   await mkdir(oldDirectory);
   const oldDate = new Date(Date.now() - 10_000);
   await utimes(oldDirectory, oldDate, oldDate);
+  const seed = new EvidenceManager(root, 1_000_000, 20, 1_000);
+  const completed = await seed.begin(
+    { serverVersion: 'test', adbVersion: null, scrcpyVersion: null, device },
+    'expired',
+  );
+  await seed.finish();
+  const statePath = join(completed.directory, '.android-agent-mcp-session.json');
+  const state = JSON.parse(await readFile(statePath, 'utf8')) as Record<string, unknown>;
+  const manifestPath = join(completed.directory, 'manifest.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<string, unknown>;
+  const oldStartedAt = new Date(Date.now() - 20_000).toISOString();
+  await writeFile(
+    statePath,
+    `${JSON.stringify(
+      { ...state, startedAt: oldStartedAt, completedAt: oldDate.toISOString() },
+      null,
+      2,
+    )}\n`,
+  );
+  await writeFile(
+    manifestPath,
+    `${JSON.stringify({ ...manifest, startedAt: oldStartedAt }, null, 2)}\n`,
+  );
   const manager = new EvidenceManager(root, 1_000_000, 20, 1_000);
   await manager.begin(
     { serverVersion: 'test', adbVersion: null, scrcpyVersion: null, device },
     'new',
   );
-  await assert.rejects(() => stat(oldDirectory));
+  assert.equal((await stat(oldDirectory)).isDirectory(), true);
+  await assert.rejects(() => stat(completed.directory));
   await manager.finish();
+});
+
+test('preserves incomplete and malformed marked evidence directories', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'android-agent-mcp-'));
+  const incompleteManager = new EvidenceManager(root, 1_000_000, 20, 1_000);
+  const incomplete = await incompleteManager.begin(
+    { serverVersion: 'test', adbVersion: null, scrcpyVersion: null, device },
+    'incomplete',
+  );
+  const malformed = join(root, 'malformed');
+  await mkdir(malformed);
+  await writeFile(join(malformed, '.android-agent-mcp-session.json'), '{"producer":"other"}\n');
+  const oldDate = new Date(Date.now() - 10_000);
+  await utimes(incomplete.directory, oldDate, oldDate);
+  await utimes(malformed, oldDate, oldDate);
+
+  const pruningManager = new EvidenceManager(root, 1_000_000, 20, 1_000);
+  await pruningManager.begin(
+    { serverVersion: 'test', adbVersion: null, scrcpyVersion: null, device },
+    'new',
+  );
+  assert.equal((await stat(incomplete.directory)).isDirectory(), true);
+  assert.equal((await stat(malformed)).isDirectory(), true);
+  await pruningManager.finish();
+});
+
+test('preserves a completed marker without its matching owned manifest', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'android-agent-mcp-'));
+  const candidate = join(root, 'forged');
+  await mkdir(candidate);
+  const startedAt = new Date(Date.now() - 20_000).toISOString();
+  await writeFile(
+    join(candidate, '.android-agent-mcp-session.json'),
+    JSON.stringify({
+      producer: 'android-agent-mcp',
+      schemaVersion: 1,
+      evidenceId: 'forged',
+      state: 'completed',
+      startedAt,
+      completedAt: new Date(Date.now() - 10_000).toISOString(),
+    }),
+  );
+  await writeFile(join(candidate, 'summary.md'), 'unrelated');
+
+  const manager = new EvidenceManager(root, 1_000_000, 20, 1_000);
+  await manager.begin(
+    { serverVersion: 'test', adbVersion: null, scrcpyVersion: null, device },
+    'new',
+  );
+  assert.equal((await stat(candidate)).isDirectory(), true);
+  await manager.finish();
+});
+
+test('keeps one completion timestamp when finalization is retried', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'android-agent-mcp-'));
+  const completionTimes: string[] = [];
+  const session = new EvidenceSession(
+    'test',
+    root,
+    new Date().toISOString(),
+    100_000,
+    10,
+    async (completedAt) => {
+      completionTimes.push(completedAt);
+      if (completionTimes.length === 1) throw new Error('marker unavailable');
+    },
+  );
+  await assert.rejects(() => session.finish(), /marker unavailable/u);
+  const summary = await session.finish();
+  assert.equal(completionTimes[0], completionTimes[1]);
+  assert.equal(summary.finishedAt, completionTimes[0]);
+  assert.match(await readFile(summary.summaryPath, 'utf8'), new RegExp(completionTimes[0]!, 'u'));
+});
+
+test('rejects manager sessions whose file limit cannot hold required metadata', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'android-agent-mcp-'));
+  const manager = new EvidenceManager(root, 1_000_000, 2);
+  await assert.rejects(
+    () =>
+      manager.begin(
+        { serverVersion: 'test', adbVersion: null, scrcpyVersion: null, device },
+        'too-small',
+      ),
+    /must reserve space/u,
+  );
 });
 
 test('rejects evidence artifact parents that resolve outside the session directory', async () => {
