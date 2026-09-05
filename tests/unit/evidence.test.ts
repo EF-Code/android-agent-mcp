@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import { EvidenceManager } from '../../src/evidence/recorder.js';
+import { EvidenceManager, EvidenceSession } from '../../src/evidence/recorder.js';
 import { AppError } from '../../src/errors/app-error.js';
 import type { DeviceInfo } from '../../src/types.js';
 
@@ -117,4 +117,29 @@ test('rejects evidence artifact parents that resolve outside the session directo
   );
   await manager.finish();
   await assert.rejects(() => stat(join(outside, 'escape.log')));
+});
+
+test('does not report completion after summary finalization fails', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'android-agent-mcp-'));
+  const session = new EvidenceSession('test', root, new Date().toISOString(), 100_000, 1);
+  await session.saveLog('one', 'hello');
+
+  await assert.rejects(() => session.finish(), /file count limit/u);
+  assert.equal(session.summary.finishedAt, null);
+  await assert.rejects(() => session.finish(), /file count limit/u);
+  assert.equal(session.summary.finishedAt, null);
+  await assert.rejects(() => stat(join(root, 'summary.md')));
+});
+
+test('shares concurrent finalization and rejects later artifact writes', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'android-agent-mcp-'));
+  const manager = new EvidenceManager(root, 1_000_000, 20);
+  const session = await manager.begin(
+    { serverVersion: 'test', adbVersion: null, scrcpyVersion: null, device },
+    'finish-once',
+  );
+
+  const [first, second] = await Promise.all([session.finish(), session.finish()]);
+  assert.deepEqual(first, second);
+  await assert.rejects(() => session.saveLog('late', 'late'), /already finished/u);
 });

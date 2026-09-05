@@ -96,6 +96,8 @@ export class EvidenceSession {
   private readonly warnings: Warning[] = [];
   private finishedAt: string | null = null;
   private pausedReason: string | null = null;
+  private finishing = false;
+  private finishPromise: Promise<EvidenceSummary> | null = null;
 
   constructor(
     readonly evidenceId: string,
@@ -139,6 +141,7 @@ export class EvidenceSession {
   }
 
   async action(name: string, details: Record<string, unknown> = {}): Promise<void> {
+    this.assertActive();
     if (this.paused) return;
     if (this.actions.length >= this.maxFiles * 10) {
       throw new AppError(ErrorCode.EvidencePathInvalid, 'Evidence action limit was reached.');
@@ -159,17 +162,20 @@ export class EvidenceSession {
   }
 
   async saveScreenshot(label: string, png: Buffer): Promise<EvidenceFileDigest> {
+    this.assertActive();
     this.assertRecording('screenshot');
     return this.saveBytes(`screenshots/${validateLabel(label)}.png`, png);
   }
 
   async saveUi(label: string, snapshot: UiSnapshot): Promise<EvidenceFileDigest> {
+    this.assertActive();
     this.assertRecording('UI snapshot');
     const safe = Buffer.from(`${JSON.stringify(sanitizeValue(snapshot), null, 2)}\n`);
     return this.saveBytes(`ui/${validateLabel(label)}.json`, safe);
   }
 
   async saveLog(label: string, text: string): Promise<EvidenceFileDigest> {
+    this.assertActive();
     this.assertRecording('log');
     return this.saveBytes(`logs/${validateLabel(label)}.log`, Buffer.from(redactLogText(text)));
   }
@@ -180,7 +186,18 @@ export class EvidenceSession {
 
   async finish(): Promise<EvidenceSummary> {
     if (this.finishedAt !== null) return this.summary;
-    this.finishedAt = new Date().toISOString();
+    if (this.finishPromise !== null) return this.finishPromise;
+    this.finishing = true;
+    this.finishPromise = this.completeFinish().catch((error: unknown) => {
+      this.finishing = false;
+      this.finishPromise = null;
+      throw error;
+    });
+    return this.finishPromise;
+  }
+
+  private async completeFinish(): Promise<EvidenceSummary> {
+    const completedAt = new Date().toISOString();
     const actionsPath = join(this.directory, 'actions.jsonl');
     try {
       const actionBytes = await readFile(actionsPath);
@@ -193,7 +210,7 @@ export class EvidenceSession {
       `# Android Agent MCP Evidence ${this.evidenceId}`,
       '',
       `- Started: ${this.startedAt}`,
-      `- Finished: ${this.finishedAt}`,
+      `- Finished: ${completedAt}`,
       `- Actions: ${this.actions.length}`,
       `- Files: ${this.files.length + 1} (including this summary)`,
       '',
@@ -212,7 +229,18 @@ export class EvidenceSession {
     ];
     const summaryBytes = Buffer.from(`${lines.join('\n')}\n`);
     this.files.push(await this.writeFile('summary.md', summaryBytes));
+    this.finishedAt = completedAt;
+    this.finishing = false;
     return this.summary;
+  }
+
+  private assertActive(): void {
+    if (this.finishing || this.finishedAt !== null) {
+      throw new AppError(
+        ErrorCode.SessionConflict,
+        'Evidence session is finishing or already finished.',
+      );
+    }
   }
 
   private assertRecording(kind: string): void {
