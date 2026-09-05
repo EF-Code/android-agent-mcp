@@ -17,6 +17,19 @@ interface FrameWaiter {
   timer: NodeJS.Timeout;
 }
 
+const MAX_PENDING_BYTES = 25_000_000;
+const MAX_WAITERS = 64;
+const DECODER_ENVIRONMENT_KEYS = ['PATH', 'HOME', 'TMPDIR', 'LANG', 'LC_ALL'] as const;
+
+function decoderEnvironment(): NodeJS.ProcessEnv {
+  const selected: NodeJS.ProcessEnv = {};
+  for (const key of DECODER_ENVIRONMENT_KEYS) {
+    const value = process.env[key];
+    if (value !== undefined) selected[key] = value;
+  }
+  return selected;
+}
+
 export function extractJpegFrames(buffer: Buffer): { frames: Buffer[]; remainder: Buffer } {
   const frames: Buffer[] = [];
   let remainder = buffer;
@@ -40,6 +53,8 @@ export class ScrcpyFrameStream {
   private latest: StreamedFrame | null = null;
   private sequence = 0;
   private readonly waiters = new Set<FrameWaiter>();
+  private failure: string | null = null;
+  private disposed = false;
 
   constructor(private readonly ffmpegPath = 'ffmpeg') {
     this.directory = mkdtempSync(join(tmpdir(), 'android-agent-mcp-stream-'));
@@ -52,7 +67,7 @@ export class ScrcpyFrameStream {
   }
 
   start(): void {
-    if (this.decoder !== null) return;
+    if (this.decoder !== null || this.disposed) return;
     const decoder = spawn(
       this.ffmpegPath,
       [
@@ -72,17 +87,32 @@ export class ScrcpyFrameStream {
         'mjpeg',
         'pipe:1',
       ],
-      { shell: false, stdio: ['ignore', 'pipe', 'ignore'] },
+      { shell: false, stdio: ['ignore', 'pipe', 'pipe'], env: decoderEnvironment() },
     );
     this.decoder = decoder;
-    decoder.stdout?.on('data', (chunk: Buffer) => this.consume(chunk));
+    decoder.stdout?.on('data', (chunk: Buffer) => {
+      try {
+        this.consume(chunk);
+      } catch (error) {
+        this.fail(error instanceof Error ? error.message : String(error), decoder);
+      }
+    });
+    let stderr = '';
+    decoder.stderr?.on('data', (chunk: Buffer) => {
+      stderr = `${stderr}${chunk.toString('utf8')}`.slice(-4_000);
+    });
+    decoder.once('error', (error) => this.fail(error.message, decoder));
     decoder.once('close', () => {
       if (this.decoder === decoder) this.decoder = null;
+      if (this.failure === null && stderr.length > 0) this.failure = stderr;
       this.resolveWaiters(null);
     });
   }
 
   private consume(chunk: Buffer): void {
+    if (this.pending.length + chunk.length > MAX_PENDING_BYTES) {
+      throw new Error('FFmpeg frame output exceeded the pending-byte limit.');
+    }
     const extracted = extractJpegFrames(Buffer.concat([this.pending, chunk]));
     this.pending = extracted.remainder;
     for (const data of extracted.frames) {
@@ -104,20 +134,36 @@ export class ScrcpyFrameStream {
     return this.latest;
   }
 
+  get diagnostic(): string | null {
+    return this.failure;
+  }
+
   async waitForFrame(afterSequence: number, timeoutMs = 1_000): Promise<StreamedFrame | null> {
     if (this.latest !== null && this.latest.sequence > afterSequence) return this.latest;
+    if (this.decoder === null || this.waiters.size >= MAX_WAITERS) return null;
     return await new Promise((resolve) => {
       const waiter: FrameWaiter = {
         afterSequence,
         resolve,
         timer: setTimeout(() => {
           this.waiters.delete(waiter);
-          resolve(this.latest?.sequence !== afterSequence ? this.latest : null);
+          resolve(
+            this.latest !== null && this.latest.sequence > afterSequence ? this.latest : null,
+          );
         }, timeoutMs),
       };
       waiter.timer.unref();
       this.waiters.add(waiter);
     });
+  }
+
+  private fail(reason: string, decoder: ChildProcess): void {
+    if (this.failure === null) this.failure = reason.slice(-4_000);
+    if (this.decoder === decoder) this.decoder = null;
+    this.pending = Buffer.alloc(0);
+    this.latest = null;
+    this.resolveWaiters(null);
+    if (decoder.pid !== undefined) decoder.kill('SIGTERM');
   }
 
   private resolveWaiters(frame: StreamedFrame | null): void {
@@ -130,8 +176,12 @@ export class ScrcpyFrameStream {
   }
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
     if (this.decoder?.pid !== undefined) this.decoder.kill('SIGTERM');
     this.decoder = null;
+    this.pending = Buffer.alloc(0);
+    this.latest = null;
     this.resolveWaiters(null);
     rmSync(this.directory, { recursive: true, force: true });
   }

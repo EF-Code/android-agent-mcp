@@ -205,7 +205,11 @@ export class ScrcpyProcessManager {
       exitCode: owner?.exitCode ?? null,
       signal: owner?.signal ?? null,
       diagnostic:
-        owner === null ? '' : redactLogText(owner.spawnError ?? owner.stderr).slice(-32_000),
+        owner === null
+          ? ''
+          : redactLogText(owner.spawnError ?? owner.frameStream?.diagnostic ?? owner.stderr).slice(
+              -32_000,
+            ),
       diagnosticTruncated: owner?.stderrTruncated ?? false,
       capabilities: this.capabilities,
       detached: owner?.detached ?? false,
