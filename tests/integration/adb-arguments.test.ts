@@ -201,22 +201,38 @@ test('uses direct ADB argument arrays for screenshots and UIAutomator', async ()
   await new AdbScreenshots(adb, 100_000).capture('serial-2');
   await new AdbUiAutomator(adb).dump('serial-2');
   assert.deepEqual(runner.calls[0]?.args, ['-s', 'serial-2', 'exec-out', 'screencap', '-p']);
+  const dumpPath = runner.calls[1]?.args.at(-1);
+  assert.match(dumpPath ?? '', /^\/data\/local\/tmp\/android_agent_mcp_ui_[0-9a-f-]+\.xml$/u);
   assert.deepEqual(
     runner.calls.slice(1).map((call) => call.args),
     [
-      [
-        '-s',
-        'serial-2',
-        'shell',
-        'uiautomator',
-        'dump',
-        '--compressed',
-        '/sdcard/android_agent_mcp_ui.xml',
-      ],
-      ['-s', 'serial-2', 'exec-out', 'cat', '/sdcard/android_agent_mcp_ui.xml'],
-      ['-s', 'serial-2', 'shell', 'rm', '-f', '/sdcard/android_agent_mcp_ui.xml'],
+      ['-s', 'serial-2', 'shell', 'uiautomator', 'dump', '--compressed', dumpPath],
+      ['-s', 'serial-2', 'exec-out', 'cat', dumpPath],
+      ['-s', 'serial-2', 'shell', 'rm', '-f', dumpPath],
     ],
   );
+});
+
+test('cleans up a unique UI dump path when UIAutomator fails', async () => {
+  const calls: string[][] = [];
+  const runner: CommandRunner = {
+    async run(_executable, args) {
+      calls.push([...args]);
+      if (args.includes('uiautomator')) throw new Error('dump failed');
+      return output();
+    },
+  };
+  const adb = new AdbClient({
+    adbPath: 'adb',
+    defaultTimeoutMs: 5_000,
+    maxOutputBytes: 100_000,
+    runner,
+  });
+
+  await assert.rejects(() => new AdbUiAutomator(adb).dump('serial-2'), /dump failed/u);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[1]?.slice(0, 5), ['-s', 'serial-2', 'shell', 'rm', '-f']);
+  assert.equal(calls[0]?.at(-1), calls[1]?.at(-1));
 });
 
 test('reads only native resolution when an input action needs coordinate bounds', async () => {
