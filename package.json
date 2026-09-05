@@ -54,7 +54,7 @@
     "verify": "npm run format:check && npm run typecheck && npm test && npm run build && npm pack --dry-run",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "prepare": "npm run build",
-    "build:test": "tsc -p tsconfig.test.json"
+    "build:test": "rm -rf dist-test && tsc -p tsconfig.test.json"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
