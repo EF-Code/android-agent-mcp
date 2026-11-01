@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Performance
+
+- Assemble fragmented streamed JPEGs with incremental marker scanning and geometrically grown bounded storage.
+- Compile selector predicates once per query and propagate hierarchy relationship matches through indexes, including nested relationships.
+- Add a repeatable device-free core benchmark with host metadata and documented baseline measurements.
+
+### Reliability
+
+- Wait beyond a post-input frame barrier, invalidate frames on decoder exit, and report fast-frame availability accurately.
+- Return `changed: null` and `change_reason: "capture_pipeline_changed"` for incomparable images; report sampled stability, polling timeout, and the final frame transport.
+- Bound polling sleeps by the remaining wait budget and avoid starting another capture after expiry.
+- Preserve case-insensitive regex escapes and bound malformed cyclic selector relationships.
+- Smoke test a clean installation of the packed package in CI, including an MCP image response.
+
 ## 0.5.1 - 2026-09-05
 
 ### Reliability

@@ -33,3 +33,6 @@ jobs:
 
       - name: Verify source, tests, build, and package contents
         run: npm run verify
+
+      - name: Smoke test a clean installation of the packed package
+        run: npm run test:package

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { cpus } from 'node:os';
 import { performance } from 'node:perf_hooks';
 
 import * as frames from '../dist/scrcpy/frame-stream.js';
@@ -70,4 +71,6 @@ const results = [
     assert.equal(findMatches(snapshot, { descendant: { text: 'Missing' } }).length, 0);
   }),
 ];
-process.stdout.write(`${JSON.stringify({ node: process.version, results }, null, 2)}\n`);
+process.stdout.write(
+  `${JSON.stringify({ node: process.version, platform: process.platform, arch: process.arch, cpu: cpus()[0]?.model, warmup_iterations: 3, measured_iterations: 15, results }, null, 2)}\n`,
+);

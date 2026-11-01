@@ -212,6 +212,8 @@ npm audit --omit=dev
 npm run benchmark:visual -- --iterations 10
 ```
 
+For device-free measurements of frame assembly and semantic selector processing, run `npm run benchmark:core`. See [performance measurements and validation](docs/performance.md) for workloads, measured improvements, and limitations. `npm run test:package` verifies the packed package from a clean temporary installation, including an MCP image response using fake ADB.
+
 The automated suite uses fake/injectable command boundaries and a child-process MCP client. It does not require a phone and does not install packages or alter device state.
 
 Opt-in physical tests are separate:
