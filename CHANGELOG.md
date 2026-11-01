@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 - 2026-11-01
 
 - Cache failed scrcpy direct-control startup until device reselection instead of retrying an incompatible server before every visual action.
 - Close the ADB connection after failed direct-client startup and discard transports that finish starting after close or reselection.
