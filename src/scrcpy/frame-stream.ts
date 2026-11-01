@@ -19,6 +19,8 @@ interface FrameWaiter {
 
 const MAX_PENDING_BYTES = 25_000_000;
 const MAX_WAITERS = 64;
+const JPEG_START = Buffer.from([0xff, 0xd8]);
+const JPEG_END = Buffer.from([0xff, 0xd9]);
 const DECODER_ENVIRONMENT_KEYS = ['PATH', 'HOME', 'TMPDIR', 'LANG', 'LC_ALL'] as const;
 
 function decoderEnvironment(): NodeJS.ProcessEnv {
@@ -45,11 +47,86 @@ export function extractJpegFrames(buffer: Buffer): { frames: Buffer[]; remainder
   }
 }
 
+// Scan each incoming byte once and grow storage geometrically. A partial frame
+// must not be recopied and rescanned on every decoder chunk.
+export class JpegFrameAssembler {
+  private buffer: Buffer = Buffer.alloc(0);
+  private length = 0;
+  private trailingFF = false;
+
+  constructor(private readonly maxBytes = MAX_PENDING_BYTES) {
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 4) {
+      throw new RangeError('JPEG frame limit must be an integer of at least four bytes.');
+    }
+  }
+
+  private append(chunk: Buffer): void {
+    const required = this.length + chunk.length;
+    if (required > this.maxBytes) {
+      this.reset();
+      throw new Error('FFmpeg frame output exceeded the pending-byte limit.');
+    }
+    if (required > this.buffer.length) {
+      const capacity = Math.min(this.maxBytes, Math.max(required, this.buffer.length * 2, 4096));
+      const next = Buffer.allocUnsafe(capacity);
+      this.buffer.copy(next, 0, 0, this.length);
+      this.buffer = next;
+    }
+    chunk.copy(this.buffer, this.length);
+    this.length = required;
+  }
+
+  push(chunk: Buffer): Buffer[] {
+    const frames: Buffer[] = [];
+    let offset = 0;
+    while (offset < chunk.length) {
+      if (this.length === 0) {
+        if (this.trailingFF && chunk[offset] === 0xd8) {
+          this.append(JPEG_START);
+          offset += 1;
+        } else {
+          const start = chunk.indexOf(JPEG_START, offset);
+          if (start < 0) {
+            this.trailingFF = chunk[chunk.length - 1] === 0xff;
+            break;
+          }
+          this.append(JPEG_START);
+          offset = start + JPEG_START.length;
+        }
+        this.trailingFF = false;
+      }
+      // EOI can straddle two chunks, just like SOI.
+      const end =
+        this.buffer[this.length - 1] === 0xff && chunk[offset] === 0xd9
+          ? offset + 1
+          : (() => {
+              const found = chunk.indexOf(JPEG_END, offset);
+              return found < 0 ? -1 : found + JPEG_END.length;
+            })();
+      if (end < 0) {
+        this.append(chunk.subarray(offset));
+        break;
+      }
+      this.append(chunk.subarray(offset, end));
+      frames.push(Buffer.from(this.buffer.subarray(0, this.length)));
+      this.length = 0;
+      offset = end;
+    }
+    return frames;
+  }
+
+  reset(): void {
+    this.buffer = Buffer.alloc(0);
+    this.length = 0;
+    this.trailingFF = false;
+  }
+}
+
 export class ScrcpyFrameStream {
   readonly directory: string;
   readonly pipePath: string;
   private decoder: ChildProcess | null = null;
-  private pending: Buffer<ArrayBufferLike> = Buffer.alloc(0);
+  private readonly assembler = new JpegFrameAssembler();
   private latest: StreamedFrame | null = null;
   private sequence = 0;
   private readonly waiters = new Set<FrameWaiter>();
@@ -110,12 +187,7 @@ export class ScrcpyFrameStream {
   }
 
   private consume(chunk: Buffer): void {
-    if (this.pending.length + chunk.length > MAX_PENDING_BYTES) {
-      throw new Error('FFmpeg frame output exceeded the pending-byte limit.');
-    }
-    const extracted = extractJpegFrames(Buffer.concat([this.pending, chunk]));
-    this.pending = extracted.remainder;
-    for (const data of extracted.frames) {
+    for (const data of this.assembler.push(chunk)) {
       const dimensions = parseJpegDimensions(data);
       const frame: StreamedFrame = {
         data,
@@ -160,7 +232,7 @@ export class ScrcpyFrameStream {
   private fail(reason: string, decoder: ChildProcess): void {
     if (this.failure === null) this.failure = reason.slice(-4_000);
     if (this.decoder === decoder) this.decoder = null;
-    this.pending = Buffer.alloc(0);
+    this.assembler.reset();
     this.latest = null;
     this.resolveWaiters(null);
     if (decoder.pid !== undefined) decoder.kill('SIGTERM');
@@ -180,7 +252,7 @@ export class ScrcpyFrameStream {
     this.disposed = true;
     if (this.decoder?.pid !== undefined) this.decoder.kill('SIGTERM');
     this.decoder = null;
-    this.pending = Buffer.alloc(0);
+    this.assembler.reset();
     this.latest = null;
     this.resolveWaiters(null);
     rmSync(this.directory, { recursive: true, force: true });
