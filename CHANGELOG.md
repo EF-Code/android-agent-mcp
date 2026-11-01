@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 - 2026-11-01
+
+### Compatibility
+
+- `visual_control_action.changed` can now be `null` when the previous and current images use different transports, MIME types, or dimensions. Consumers must handle `null` and inspect `change_reason` rather than assuming every result is a boolean. See `docs/visual-control.md` for the full observation contract.
 
 ### Performance
 
