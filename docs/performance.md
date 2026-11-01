@@ -53,3 +53,22 @@ npm run benchmark:core
 Local validation on 2026-11-01: `npm run verify` passed on Node v26.13.0 with 119 tests (118 passed, one opt-in physical-device test skipped). The compiled suite also passed with the same counts on Node v22.23.4 and v24.22.2. The installed-package smoke check passed on Node v26.13.0. Hosted CI for these changes has not yet run.
 
 Before a release, also run the opt-in physical-device suite on a prepared test application and measure cold/warm visual-session latency. Remaining performance work should be driven by those measurements: native display geometry after rotation, accurate phase timing for combined ADB commands, cancellation and deadlines across in-flight adapters, and decoder startup/shutdown overhead. These are separate from the component gains measured here.
+
+## Physical-device follow-up: 2026-11-01
+
+A Samsung SM-A075F running Android 16 (API 36), with a 720×1600 display, was connected and authorized. The host had scrcpy 5.0.1 and FFmpeg 9.0.2. MCP initialization, device selection, device information, and visual-action image responses worked against the actual device. The published `0.6.0` baseline was commit `765dda4`.
+
+The test flow used alternating volume-up/down keys through `visual_control_action`, with two warmup calls and ten measured one-action calls per run. There were no settling/change waits. Baseline and initial follow-up comparisons used the launcher as the foreground application. The media-volume level was 9 before and after the runs. Owned scrcpy/FFmpeg helpers were absent after cleanup. Raw JSON and a run manifest were saved outside the repository; no screenshots or recordings were retained as report artifacts.
+
+| Run                                      |   Median |      p95 | Input | Returned frames              |
+| ---------------------------------------- | -------: | -------: | ----- | ---------------------------- |
+| Published 0.6.0, JPEG, launcher          | 1,456 ms | 1,599 ms | ADB   | 9 streamed JPEG, 1 ADB frame |
+| Published 0.6.0, PNG, launcher           | 1,480 ms | 1,597 ms | ADB   | 10 ADB frames                |
+| Retry-cache prototype, JPEG, launcher    |   766 ms | 1,217 ms | ADB   | 9 streamed JPEG, 1 ADB frame |
+| Committed follow-up, JPEG, different app |   915 ms | 1,601 ms | ADB   | 9 streamed JPEG, 1 ADB frame |
+
+The device reported that the scrcpy server version `5.0.1` did not match the direct-control client's `4.1`. In `0.6.0`, failed direct startup was retried before every streamed visual action. The launcher baseline's streamed-action preflight took 732–922 ms, including the repeated push/start failure. The retry-cache prototype reduced those preflights to 164–228 ms and reduced the matched launcher run's median by approximately 47%. The failed-start ADB socket is also now closed, and late startup results cannot restore a transport after close/reselection.
+
+The prototype comparison was measured before commit; bounded fallback diagnostic fields were added afterward. The completed implementation is commit `1de0750`. A final run against that exact commit confirmed the `input_fallback_reason` field and retained working ADB input, but the foreground application had changed. Its 915 ms median and 1,601 ms p95 are recorded separately and must not be presented as a controlled before/after improvement. All runs retained their ADB frame fallback outlier. These are sequential ten-sample measurements, without thermal controls or randomization, and do not establish a general app-performance improvement.
+
+The follow-up passed `npm run verify` with 126 tests (125 passed, one skipped), the compiled suite on Node 22 and 24, and the clean installed-package smoke check. The opt-in application fixture remains unrun because no designated test package and harmless selector were supplied. This follow-up is unreleased; the npm `0.6.0` package contains the baseline behavior.
