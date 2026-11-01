@@ -3,35 +3,33 @@ import { AppError } from '../errors/app-error.js';
 import { compileBoundedRegex, validateSelector } from '../validation/selectors.js';
 import type { UiMatch, UiNode, UiSelector, UiSnapshot } from './types.js';
 
-function compareText(
-  actual: string | null,
+function compileTextCheck(
   expected: string,
   mode: UiSelector['textMode'],
   caseSensitive: boolean,
-): boolean {
-  if (actual === null) return false;
-  const left = caseSensitive ? actual : actual.toLocaleLowerCase();
-  const right = caseSensitive ? expected : expected.toLocaleLowerCase();
-  switch (mode ?? 'exact') {
-    case 'exact':
-      return left === right;
-    case 'contains':
-      return left.includes(right);
-    case 'regex':
-      return compileBoundedRegex(caseSensitive ? expected : expected.toLocaleLowerCase()).test(
-        left,
-      );
+): (actual: string | null) => boolean {
+  if (mode === 'regex') {
+    const regex = compileBoundedRegex(expected, caseSensitive);
+    return (actual) => actual !== null && regex.test(actual);
   }
+  const right = caseSensitive ? expected : expected.toLocaleLowerCase();
+  return (actual) => {
+    if (actual === null) return false;
+    const left = caseSensitive ? actual : actual.toLocaleLowerCase();
+    return mode === 'contains' ? left.includes(right) : left === right;
+  };
 }
 
-function matchesNode(
-  node: UiNode,
-  selector: UiSelector,
-): { matched: boolean; score: number; reasons: string[] } {
+function compileNodeMatcher(selector: UiSelector): {
+  matches: (node: UiNode) => boolean;
+  score: number;
+  reasons: string[];
+} {
   let score = 0;
   const reasons: string[] = [];
+  const checks: Array<(node: UiNode) => boolean> = [];
   const stringChecks: Array<{
-    actual: string | null;
+    field: 'text' | 'contentDescription';
     expected: string | undefined;
     mode: UiSelector['textMode'];
     caseSensitive: boolean;
@@ -39,7 +37,7 @@ function matchesNode(
     label: string;
   }> = [
     {
-      actual: node.text,
+      field: 'text',
       expected: selector.text,
       mode: selector.textMode,
       caseSensitive: selector.textCaseSensitive ?? true,
@@ -47,7 +45,7 @@ function matchesNode(
       label: 'text',
     },
     {
-      actual: node.contentDescription,
+      field: 'contentDescription',
       expected: selector.contentDescription,
       mode: selector.contentDescriptionMode,
       caseSensitive: selector.contentDescriptionCaseSensitive ?? true,
@@ -58,22 +56,23 @@ function matchesNode(
 
   for (const check of stringChecks) {
     if (check.expected !== undefined) {
-      if (!compareText(check.actual, check.expected, check.mode, check.caseSensitive)) {
-        return { matched: false, score: 0, reasons: [] };
-      }
+      const matchesText = compileTextCheck(check.expected, check.mode, check.caseSensitive);
+      checks.push((node) => matchesText(node[check.field]));
       score += check.weight;
       reasons.push(`${check.label}:${check.mode ?? 'exact'}`);
     }
   }
 
-  const exactChecks: Array<[string, string | null | undefined, string | null, number]> = [
-    ['resourceId', selector.resourceId, node.resourceId, 110],
-    ['className', selector.className, node.className, 35],
-    ['packageName', selector.packageName, node.packageName, 30],
+  const exactChecks: Array<
+    ['resourceId' | 'className' | 'packageName', string | undefined, number]
+  > = [
+    ['resourceId', selector.resourceId, 110],
+    ['className', selector.className, 35],
+    ['packageName', selector.packageName, 30],
   ];
-  for (const [label, expected, actual, weight] of exactChecks) {
+  for (const [label, expected, weight] of exactChecks) {
     if (expected !== undefined) {
-      if (actual !== expected) return { matched: false, score: 0, reasons: [] };
+      checks.push((node) => node[label] === expected);
       score += weight;
       reasons.push(`${label}:exact`);
     }
@@ -91,43 +90,94 @@ function matchesNode(
   ];
   for (const [flag, expected] of flagChecks) {
     if (expected !== undefined) {
-      if (node.flags[flag] !== expected) return { matched: false, score: 0, reasons: [] };
+      checks.push((node) => node.flags[flag] === expected);
       score += 10;
       reasons.push(`${flag}:${expected}`);
     }
   }
 
   if (selector.nodeId !== undefined) {
-    if (selector.nodeId !== node.nodeId) return { matched: false, score: 0, reasons: [] };
+    checks.push((node) => selector.nodeId === node.nodeId);
     score += 1_000;
     reasons.push('nodeId:exact');
   }
 
-  return { matched: true, score, reasons };
+  return { matches: (node) => checks.every((check) => check(node)), score, reasons };
 }
 
-function hasAncestor(snapshot: UiSnapshot, node: UiNode, selector: UiSelector): boolean {
-  let parentId = node.parentId;
-  while (parentId !== null) {
-    const parent = snapshot.nodes.find((candidate) => candidate.nodeId === parentId);
-    if (parent === undefined) return false;
-    if (matchesNode(parent, selector).matched) return true;
-    parentId = parent.parentId;
+interface HierarchyIndex {
+  nodes: Map<string, UiNode>;
+  childrenByParent: Map<string, string[]>;
+  parentsByChild: Map<string, string[]>;
+}
+
+function addEdge(edges: Map<string, string[]>, from: string, to: string): void {
+  const existing = edges.get(from);
+  if (existing === undefined) edges.set(from, [to]);
+  else existing.push(to);
+}
+
+function indexHierarchy(snapshot: UiSnapshot): HierarchyIndex {
+  const index: HierarchyIndex = {
+    nodes: new Map(),
+    childrenByParent: new Map(),
+    parentsByChild: new Map(),
+  };
+  for (const node of snapshot.nodes) {
+    if (index.nodes.has(node.nodeId)) {
+      throw new AppError(ErrorCode.UiHierarchyIncomplete, 'UI node IDs must be unique.');
+    }
+    index.nodes.set(node.nodeId, node);
+    if (node.parentId !== null) addEdge(index.childrenByParent, node.parentId, node.nodeId);
+    for (const childId of node.childIds) addEdge(index.parentsByChild, childId, node.nodeId);
   }
-  return false;
+  return index;
 }
 
-function hasDescendant(snapshot: UiSnapshot, node: UiNode, selector: UiSelector): boolean {
-  const pending = [...node.childIds];
+// Propagate relationship matches once per selector instead of walking the same
+// subtrees for every candidate. Visited IDs also bound malformed cyclic graphs.
+function relatedIds(
+  matches: Set<string>,
+  edges: Map<string, string[]>,
+  index: HierarchyIndex,
+): Set<string> {
+  const related = new Set<string>();
+  const pending = [...matches];
+  const expanded = new Set<string>();
   while (pending.length > 0) {
-    const nodeId = pending.pop();
-    if (nodeId === undefined) continue;
-    const child = snapshot.nodes.find((candidate) => candidate.nodeId === nodeId);
-    if (child === undefined) continue;
-    if (matchesNode(child, selector).matched) return true;
-    pending.push(...child.childIds);
+    const nodeId = pending.pop()!;
+    if (expanded.has(nodeId)) continue;
+    expanded.add(nodeId);
+    for (const nextId of edges.get(nodeId) ?? []) {
+      if (!index.nodes.has(nextId)) continue;
+      related.add(nextId);
+      if (!expanded.has(nextId)) pending.push(nextId);
+    }
   }
-  return false;
+  return related;
+}
+
+function evaluateSelector(selector: UiSelector, index: HierarchyIndex) {
+  const matcher = compileNodeMatcher(selector);
+  const ancestors =
+    selector.ancestor === undefined
+      ? null
+      : relatedIds(evaluateSelector(selector.ancestor, index).ids, index.childrenByParent, index);
+  const descendants =
+    selector.descendant === undefined
+      ? null
+      : relatedIds(evaluateSelector(selector.descendant, index).ids, index.parentsByChild, index);
+  const ids = new Set<string>();
+  for (const node of index.nodes.values()) {
+    if (
+      (ancestors === null || ancestors.has(node.nodeId)) &&
+      (descendants === null || descendants.has(node.nodeId)) &&
+      matcher.matches(node)
+    ) {
+      ids.add(node.nodeId);
+    }
+  }
+  return { ids, score: matcher.score, reasons: matcher.reasons };
 }
 
 export function findMatches(snapshot: UiSnapshot, selector: UiSelector): UiMatch[] {
@@ -136,16 +186,10 @@ export function findMatches(snapshot: UiSnapshot, selector: UiSelector): UiMatch
     throw new AppError(ErrorCode.InvalidSelector, 'At least one selector field is required.');
   }
 
+  const result = evaluateSelector(selector, indexHierarchy(snapshot));
   return snapshot.nodes
-    .flatMap((node) => {
-      const result = matchesNode(node, selector);
-      if (!result.matched) return [];
-      if (selector.ancestor !== undefined && !hasAncestor(snapshot, node, selector.ancestor))
-        return [];
-      if (selector.descendant !== undefined && !hasDescendant(snapshot, node, selector.descendant))
-        return [];
-      return [{ node, score: result.score, reasons: result.reasons }];
-    })
+    .filter((node) => result.ids.has(node.nodeId))
+    .map((node) => ({ node, score: result.score, reasons: [...result.reasons] }))
     .sort(
       (left, right) =>
         right.score - left.score || left.node.nodeId.localeCompare(right.node.nodeId),

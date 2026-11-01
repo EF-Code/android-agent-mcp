@@ -24,7 +24,7 @@ function isPotentiallyUnsafeRegex(pattern: string): boolean {
   );
 }
 
-export function compileBoundedRegex(pattern: string): RegExp {
+export function compileBoundedRegex(pattern: string, caseSensitive = true): RegExp {
   if (
     pattern.length === 0 ||
     pattern.length > MAX_SELECTOR_TEXT ||
@@ -40,7 +40,7 @@ export function compileBoundedRegex(pattern: string): RegExp {
   }
 
   try {
-    return new RegExp(pattern, 'u');
+    return new RegExp(pattern, caseSensitive ? 'u' : 'iu');
   } catch (error) {
     throw new AppError(ErrorCode.InvalidSelector, 'Regex selector is not valid.', { cause: error });
   }
