@@ -120,3 +120,15 @@ test('reports the actual final transport when polling switches to ADB', async ()
   assert.equal(result.changed, null);
   assert.equal(result.changeReason, 'capture_pipeline_changed');
 });
+
+test('clears an incomplete stability assessment when polling changes pipelines', async () => {
+  const { result } = await run({
+    baseline: frame('before', 'scrcpy'),
+    initial: frame('after', 'scrcpy'),
+    frames: [frame('after', 'adb')],
+    stableMs: 100,
+  });
+  assert.equal(result.changed, null);
+  assert.equal(result.stable, null);
+  assert.equal(result.timedOut, false);
+});

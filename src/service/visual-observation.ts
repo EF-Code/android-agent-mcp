@@ -51,7 +51,10 @@ export async function waitForVisualObservation(options: {
     changed = comparableFrames(options.baseline, frame)
       ? options.baseline.screenshot.sha256 !== frame.screenshot.sha256
       : null;
-    if (changed === null) break;
+    if (changed === null) {
+      stable = null;
+      break;
+    }
     if (options.waitForChangeMs === 0) break;
     if (changed === true && options.stableMs === 0) break;
     if (changed === true && options.stableMs > 0) {
