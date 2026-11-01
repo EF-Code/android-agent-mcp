@@ -111,6 +111,7 @@ export interface VisualControlActionResult extends VisualControlFrame {
   waitElapsedMs: number;
   elapsedMs: number;
   inputTransport: 'scrcpy' | 'adb';
+  inputFallbackReason: string | null;
   frameTransport: 'scrcpy' | 'adb';
   timingMs: {
     preflight: number;
@@ -725,6 +726,7 @@ export class AndroidDeviceService {
       waitElapsedMs: waited.elapsedMs,
       elapsedMs: Math.round(performance.now() - started),
       inputTransport,
+      inputFallbackReason: inputTransport === 'adb' ? this.directControl.diagnostic : null,
       frameTransport: waited.frameTransport,
       timingMs: {
         preflight: preflightMs,

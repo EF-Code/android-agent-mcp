@@ -35,6 +35,8 @@ Actions are bounded to at most 32 taps, swipes, or allowlisted non-sensitive key
 
 The result reports `elapsed_ms`, `wait_elapsed_ms`, `changed`, `input_transport`, `frame_transport`, the frame hash/MIME type, and `timing_ms` split into preflight, input, settle, observation, and postflight. That distinguishes device overhead and fast-path use from the model's reasoning/tool-call latency.
 
+`input_fallback_reason` gives a bounded diagnostic when direct control could not start or its client exited. Failed startup is cached for the selected device session so an incompatible server is not pushed and restarted before every action. Reselect the device after fixing the server path or installation to retry. The direct-control adapter currently uses the scrcpy 4.1 protocol; an installed scrcpy 5.x server can still provide a visible mirror and streamed frames while input falls back to ADB.
+
 `changed` compares encoded hashes only when transport, MIME type, and dimensions match the previous session observation. When these differ, it returns `null` with `change_reason: "capture_pipeline_changed"`, skips further change polling, and returns the new observation. Callers must handle this third value. Encoded hash changes are not proof of a semantic UI change.
 
 `stable` is `true` only after matching sampled frames span the requested quiet window, `false` when an observed change fails to settle before expiry, and `null` when stability was not evaluated. `timed_out` identifies an unmet change or stability request at expiry. `frame_transport` always describes the final image, including an ADB image returned after stream fallback or change polling.

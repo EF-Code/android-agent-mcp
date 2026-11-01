@@ -16,6 +16,7 @@ import {
 
 import type { AdbClient } from '../adb/client.js';
 import { KEY_CODES, type InputSequenceAction } from '../adb/input.js';
+import { redactLogText } from '../policy/redaction.js';
 
 const REMOTE_SERVER_PATH = '/data/local/tmp/android-agent-mcp-scrcpy-server.jar';
 type DirectOptions = AdbScrcpyOptions4_1<{
@@ -44,68 +45,147 @@ async function findServer(): Promise<string | null> {
   return null;
 }
 
+export interface DirectControlConnection {
+  adb: Pick<Adb, 'close'>;
+  client: {
+    controller:
+      | Pick<AdbScrcpyClientType<DirectOptions>['controller'], 'injectTouch' | 'injectKeyCode'>
+      | undefined;
+    exited: Promise<void>;
+    close(): Promise<void>;
+  };
+}
+
+export interface DirectControlDependencies {
+  findServer(): Promise<string | null>;
+  connect(serial: string): Promise<DirectControlConnection>;
+}
+
+async function connect(serial: string): Promise<DirectControlConnection> {
+  const adb = await new AdbServerNodeJsClient().createAdb({ serial });
+  try {
+    const client = await AdbScrcpyClient.start(
+      adb,
+      REMOTE_SERVER_PATH,
+      new AdbScrcpyOptions4_1({
+        video: false,
+        videoCodec: 'h264',
+        audio: false,
+        control: true,
+        clipboardAutosync: false,
+        logLevel: 'error',
+      }),
+    );
+    return { adb, client };
+  } catch (error) {
+    await adb.close().catch(() => undefined);
+    throw error;
+  }
+}
+
+function startupDiagnostic(error: unknown): string {
+  const output =
+    typeof error === 'object' && error !== null && 'output' in error ? error.output : null;
+  const message = Array.isArray(output)
+    ? output
+        .filter((line): line is string => typeof line === 'string')
+        .slice(0, 2)
+        .join('\n')
+    : error instanceof Error
+      ? error.message
+      : String(error);
+  return redactLogText(message).slice(0, 1000);
+}
+
 export class ScrcpyDirectControl {
-  private adb: Adb | null = null;
-  private client: AdbScrcpyClientType<DirectOptions> | null = null;
+  private adb: DirectControlConnection['adb'] | null = null;
+  private client: DirectControlConnection['client'] | null = null;
   private serial: string | null = null;
   private starting: Promise<boolean> | null = null;
+  private startingSerial: string | null = null;
+  private unavailableSerial: string | null = null;
+  private generation = 0;
+  private failure: string | null = null;
 
-  constructor(private readonly adbCli: AdbClient) {}
+  constructor(
+    private readonly adbCli: AdbClient,
+    private readonly dependencies: DirectControlDependencies = { findServer, connect },
+  ) {}
+
+  get diagnostic(): string | null {
+    return this.failure;
+  }
 
   async ensureStarted(serial: string): Promise<boolean> {
     if (this.client !== null && this.serial === serial) return true;
-    if (this.starting !== null) return this.starting;
-    this.starting = this.start(serial).finally(() => {
-      this.starting = null;
-    });
-    return this.starting;
+    if (this.unavailableSerial === serial) return false;
+    if (this.starting !== null) {
+      if (this.startingSerial === serial) return this.starting;
+      const generation = this.generation;
+      await this.starting;
+      if (generation !== this.generation) return false;
+      return this.ensureStarted(serial);
+    }
+    const generation = this.generation;
+    const pending = this.start(serial, generation)
+      .then((ready) => {
+        if (!ready && generation === this.generation) this.unavailableSerial = serial;
+        return ready;
+      })
+      .finally(() => {
+        if (this.starting === pending) {
+          this.starting = null;
+          this.startingSerial = null;
+        }
+      });
+    this.starting = pending;
+    this.startingSerial = serial;
+    return pending;
   }
 
-  private async start(serial: string): Promise<boolean> {
-    await this.close();
-    const serverPath = await findServer();
-    if (serverPath === null) return false;
+  private async start(serial: string, generation: number): Promise<boolean> {
+    await this.closeActive();
     try {
+      if (generation !== this.generation) return false;
+      const serverPath = await this.dependencies.findServer();
+      if (generation !== this.generation) return false;
+      if (serverPath === null) {
+        this.failure =
+          'A compatible scrcpy server was not found; using ADB input until device reselection.';
+        return false;
+      }
       await this.adbCli.device(serial, ['push', serverPath, REMOTE_SERVER_PATH], {
         timeoutMs: 30_000,
         maxOutputBytes: 64_000,
       });
-      const server = new AdbServerNodeJsClient();
-      const adb = await server.createAdb({ serial });
-      const client = await AdbScrcpyClient.start(
-        adb,
-        REMOTE_SERVER_PATH,
-        new AdbScrcpyOptions4_1({
-          video: false,
-          videoCodec: 'h264',
-          audio: false,
-          control: true,
-          clipboardAutosync: false,
-          logLevel: 'error',
-        }),
-      );
+      if (generation !== this.generation) return false;
+      const { adb, client } = await this.dependencies.connect(serial);
+      if (generation !== this.generation) {
+        await client.close().catch(() => undefined);
+        await adb.close().catch(() => undefined);
+        return false;
+      }
       this.adb = adb;
       this.client = client;
       this.serial = serial;
-      void client.exited.then(
-        () => {
-          if (this.client === client) {
-            this.client = null;
-            this.adb = null;
-            this.serial = null;
-          }
-        },
-        () => {
-          if (this.client === client) {
-            this.client = null;
-            this.adb = null;
-            this.serial = null;
-          }
-        },
-      );
+      this.failure = null;
+      this.unavailableSerial = null;
+      const exited = () => {
+        if (this.client !== client) return;
+        this.client = null;
+        this.adb = null;
+        this.serial = null;
+        this.unavailableSerial = serial;
+        this.failure = 'scrcpy direct control exited; using ADB input until device reselection.';
+        void adb.close().catch(() => undefined);
+      };
+      void client.exited.then(exited, exited);
       return true;
-    } catch {
-      await this.close();
+    } catch (error) {
+      if (generation === this.generation) {
+        this.failure = startupDiagnostic(error);
+        await this.closeActive();
+      }
       return false;
     }
   }
@@ -189,6 +269,15 @@ export class ScrcpyDirectControl {
   }
 
   async close(): Promise<void> {
+    this.generation += 1;
+    this.unavailableSerial = null;
+    this.failure = null;
+    this.starting = null;
+    this.startingSerial = null;
+    await this.closeActive();
+  }
+
+  private async closeActive(): Promise<void> {
     const client = this.client;
     const adb = this.adb;
     this.client = null;

@@ -717,6 +717,7 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
           wait_elapsed_ms: result.waitElapsedMs,
           elapsed_ms: result.elapsedMs,
           input_transport: result.inputTransport,
+          input_fallback_reason: result.inputFallbackReason,
           frame_transport: result.frameTransport,
           timing_ms: result.timingMs,
         });

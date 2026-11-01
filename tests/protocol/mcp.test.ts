@@ -176,6 +176,7 @@ test('returns image content and structured errors over MCP stdio', async () => {
         change_reason: string | null;
         stable: boolean | null;
         timed_out: boolean;
+        input_fallback_reason: string | null;
         elapsed_ms: number;
         wait_elapsed_ms: number;
         timing_ms: {
@@ -192,6 +193,10 @@ test('returns image content and structured errors over MCP stdio', async () => {
     assert.equal(visualActionData.data.change_reason, null);
     assert.equal(visualActionData.data.stable, null);
     assert.equal(visualActionData.data.timed_out, false);
+    assert.ok(
+      visualActionData.data.input_fallback_reason === null ||
+        typeof visualActionData.data.input_fallback_reason === 'string',
+    );
     assert.equal(typeof visualActionData.data.elapsed_ms, 'number');
     assert.equal(typeof visualActionData.data.wait_elapsed_ms, 'number');
     assert.equal(typeof visualActionData.data.timing_ms.preflight, 'number');
