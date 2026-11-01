@@ -37,6 +37,10 @@ import type { ScrcpyStartOptions } from './scrcpy/capabilities.js';
 import { ScrcpyDirectControl } from './scrcpy/direct-control.js';
 import { ScrcpyProcessManager } from './scrcpy/process-manager.js';
 import { OperationCoordinator } from './service/operation-coordinator.js';
+import {
+  waitForVisualObservation,
+  type VisualFrameSignature,
+} from './service/visual-observation.js';
 
 const STARTUP_WAIT_MS = 200;
 
@@ -100,7 +104,10 @@ export interface VisualControlActionResult extends VisualControlFrame {
   serial: string;
   coordinateSpace: VisualCoordinateSpace;
   actionCount: number;
-  changed: boolean;
+  changed: boolean | null;
+  changeReason: 'capture_pipeline_changed' | null;
+  stable: boolean | null;
+  timedOut: boolean;
   waitElapsedMs: number;
   elapsedMs: number;
   inputTransport: 'scrcpy' | 'adb';
@@ -121,7 +128,7 @@ interface VisualControlSessionState {
   coordinateSpace: VisualCoordinateSpace;
   frameFormat: VisualFrameFormat;
   foregroundPackage: string;
-  lastScreenshotSha256: string;
+  lastFrame: VisualFrameSignature;
   screenWidth: number;
   screenHeight: number;
   startedAt: string;
@@ -499,87 +506,6 @@ export class AndroidDeviceService {
     return { state, serial: state.serial };
   }
 
-  private async waitForVisualChange(
-    serial: string,
-    baselineSha256: string,
-    frameFormat: VisualFrameFormat,
-    waitForChangeMs: number,
-    stableMs: number,
-    pollMs: number,
-    initialObservation?: VisualControlFrame,
-  ): Promise<{
-    screenshot: EncodedScreenshot;
-    foreground: ForegroundApp;
-    changed: boolean;
-    elapsedMs: number;
-  }> {
-    const started = performance.now();
-    let observation =
-      initialObservation === undefined
-        ? await this.screenshots.captureVisualObservation(serial, frameFormat)
-        : null;
-    let screenshot = initialObservation?.screenshot ?? observation!.screenshot;
-    let foreground =
-      initialObservation?.foreground ??
-      (await this.requireCapturedForeground(
-        observation!.foregroundOutput,
-        'visual control observation',
-        serial,
-      ));
-    let changed = screenshot.sha256 !== baselineSha256;
-    if (waitForChangeMs === 0 || (!changed && performance.now() - started >= waitForChangeMs)) {
-      return {
-        screenshot,
-        foreground,
-        changed,
-        elapsedMs: Math.round(performance.now() - started),
-      };
-    }
-
-    while (!changed && performance.now() - started < waitForChangeMs) {
-      await new Promise((resolve) => setTimeout(resolve, pollMs));
-      observation = await this.screenshots.captureVisualObservation(serial, frameFormat);
-      screenshot = observation.screenshot;
-      foreground = await this.requireCapturedForeground(
-        observation.foregroundOutput,
-        'visual control observation',
-        serial,
-      );
-      changed = screenshot.sha256 !== baselineSha256;
-    }
-    if (!changed || stableMs === 0) {
-      return {
-        screenshot,
-        foreground,
-        changed,
-        elapsedMs: Math.round(performance.now() - started),
-      };
-    }
-
-    let stableSince = performance.now();
-    while (performance.now() - started < waitForChangeMs) {
-      if (performance.now() - stableSince >= stableMs) break;
-      await new Promise((resolve) => setTimeout(resolve, pollMs));
-      observation = await this.screenshots.captureVisualObservation(serial, frameFormat);
-      const next = observation.screenshot;
-      foreground = await this.requireCapturedForeground(
-        observation.foregroundOutput,
-        'visual control observation',
-        serial,
-      );
-      if (next.sha256 !== screenshot.sha256) {
-        screenshot = next;
-        stableSince = performance.now();
-      }
-    }
-    return {
-      screenshot,
-      foreground,
-      changed,
-      elapsedMs: Math.round(performance.now() - started),
-    };
-  }
-
   async visualControlStart(
     coordinateSpace: VisualCoordinateSpace = 'normalized_1000',
     frameFormat: VisualFrameFormat = 'jpeg',
@@ -612,7 +538,15 @@ export class AndroidDeviceService {
       coordinateSpace,
       frameFormat,
       foregroundPackage: frame.foreground.packageName!,
-      lastScreenshotSha256: frame.screenshot.sha256,
+      lastFrame: {
+        screenshot: {
+          sha256: frame.screenshot.sha256,
+          mimeType: frame.screenshot.mimeType,
+          width: frame.screenshot.width,
+          height: frame.screenshot.height,
+        },
+        frameTransport: 'adb',
+      },
       screenWidth: frame.screenshot.width,
       screenHeight: frame.screenshot.height,
       startedAt,
@@ -714,7 +648,10 @@ export class AndroidDeviceService {
       const settleStarted = performance.now();
       await this.stabilize(settleMs);
       settleElapsedMs = Math.round(performance.now() - settleStarted);
-      const streamed = await this.scrcpy.waitForFrame(streamBaseline.sequence, 1_000);
+      // Frames received during preflight/input/settling cannot establish the
+      // action result. Wait beyond a barrier taken after input has completed.
+      const afterInputSequence = this.scrcpy.latestFrame()?.sequence ?? streamBaseline.sequence;
+      const streamed = await this.scrcpy.waitForFrame(afterInputSequence, 1_000);
       if (streamed === null) {
         frame = await this.captureVisualFrame(
           serial,
@@ -751,16 +688,30 @@ export class AndroidDeviceService {
         ),
       };
     }
-    const waited = await this.waitForVisualChange(
-      serial,
-      state.lastScreenshotSha256,
-      state.frameFormat,
+    const waited = await waitForVisualObservation({
+      baseline: state.lastFrame,
+      initial: { ...frame, frameTransport },
       waitForChangeMs,
       stableMs,
       pollMs,
-      frame,
-    );
-    state.lastScreenshotSha256 = waited.screenshot.sha256;
+      capture: async () => ({
+        ...(await this.captureVisualFrame(
+          serial,
+          'visual control change polling',
+          state.frameFormat,
+        )),
+        frameTransport: 'adb',
+      }),
+    });
+    state.lastFrame = {
+      screenshot: {
+        sha256: waited.screenshot.sha256,
+        mimeType: waited.screenshot.mimeType,
+        width: waited.screenshot.width,
+        height: waited.screenshot.height,
+      },
+      frameTransport: waited.frameTransport,
+    };
     state.foregroundPackage = waited.foreground.packageName!;
     return {
       sessionId: options.sessionId,
@@ -768,10 +719,13 @@ export class AndroidDeviceService {
       coordinateSpace,
       actionCount: actions.length,
       changed: waited.changed,
+      changeReason: waited.changeReason,
+      stable: waited.stable,
+      timedOut: waited.timedOut,
       waitElapsedMs: waited.elapsedMs,
       elapsedMs: Math.round(performance.now() - started),
       inputTransport,
-      frameTransport,
+      frameTransport: waited.frameTransport,
       timingMs: {
         preflight: preflightMs,
         input: inputMs,

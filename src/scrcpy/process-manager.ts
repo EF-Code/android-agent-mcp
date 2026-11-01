@@ -213,7 +213,7 @@ export class ScrcpyProcessManager {
       diagnosticTruncated: owner?.stderrTruncated ?? false,
       capabilities: this.capabilities,
       detached: owner?.detached ?? false,
-      fastFrames: owner?.frameStream?.current() !== null,
+      fastFrames: owner?.frameStream?.current() != null,
     };
   }
 

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess, type SpawnOptions } from 'node:child_process';
 
 import { parseJpegDimensions, type EncodedScreenshot } from '../adb/screenshots.js';
 
@@ -133,7 +133,14 @@ export class ScrcpyFrameStream {
   private failure: string | null = null;
   private disposed = false;
 
-  constructor(private readonly ffmpegPath = 'ffmpeg') {
+  constructor(
+    private readonly ffmpegPath = 'ffmpeg',
+    private readonly spawnDecoder: (
+      executable: string,
+      args: readonly string[],
+      options: SpawnOptions,
+    ) => ChildProcess = spawn,
+  ) {
     this.directory = mkdtempSync(join(tmpdir(), 'android-agent-mcp-stream-'));
     this.pipePath = join(this.directory, 'video.mkv');
     const fifo = spawnSync('mkfifo', [this.pipePath], { stdio: 'ignore' });
@@ -144,8 +151,8 @@ export class ScrcpyFrameStream {
   }
 
   start(): void {
-    if (this.decoder !== null || this.disposed) return;
-    const decoder = spawn(
+    if (this.decoder !== null || this.disposed || this.failure !== null) return;
+    const decoder = this.spawnDecoder(
       this.ffmpegPath,
       [
         '-hide_banner',
@@ -168,6 +175,7 @@ export class ScrcpyFrameStream {
     );
     this.decoder = decoder;
     decoder.stdout?.on('data', (chunk: Buffer) => {
+      if (this.decoder !== decoder || this.disposed) return;
       try {
         this.consume(chunk);
       } catch (error) {
@@ -180,9 +188,9 @@ export class ScrcpyFrameStream {
     });
     decoder.once('error', (error) => this.fail(error.message, decoder));
     decoder.once('close', () => {
-      if (this.decoder === decoder) this.decoder = null;
-      if (this.failure === null && stderr.length > 0) this.failure = stderr;
-      this.resolveWaiters(null);
+      if (this.decoder === decoder && !this.disposed) {
+        this.fail(stderr || 'FFmpeg decoder exited before disposal.', decoder);
+      }
     });
   }
 

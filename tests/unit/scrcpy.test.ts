@@ -37,6 +37,11 @@ function jpeg(width: number, height: number): Buffer {
   ]);
 }
 
+test('reports fast frames unavailable when no decoder exists', () => {
+  const manager = new ScrcpyProcessManager('unused', false);
+  assert.equal(manager.status().fastFrames, false);
+});
+
 test('extracts complete streamed JPEGs and retains a split frame', () => {
   const first = jpeg(720, 1600);
   const second = jpeg(360, 800);

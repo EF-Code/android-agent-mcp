@@ -711,6 +711,9 @@ function registerInteractiveTools(server: McpServer, service: AndroidDeviceServi
         return visualFrameContent(result, {
           action_count: result.actionCount,
           changed: result.changed,
+          change_reason: result.changeReason,
+          stable: result.stable,
+          timed_out: result.timedOut,
           wait_elapsed_ms: result.waitElapsedMs,
           elapsed_ms: result.elapsedMs,
           input_transport: result.inputTransport,

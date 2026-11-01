@@ -31,9 +31,15 @@ Actions are bounded to at most 32 taps, swipes, or allowlisted non-sensitive key
 }
 ```
 
-`wait_for_change_ms` is optional and bounded to 15 seconds. It polls frames only while the screen still matches the previous session frame. `settle_ms` delays the first observation when the app needs time to animate or an opponent needs time to respond. `stable_ms` then requests a quiet-frame window after the first observed change. Keep all three at zero for immediate board actions; add only the shortest delay the app genuinely needs.
+`wait_for_change_ms` is optional and bounded to 15 seconds. It polls frames only while the screen still matches the previous session frame. `settle_ms` delays the first observation when the app needs time to animate or an opponent needs time to respond. `stable_ms` requests a sampled quiet-frame window after a change, within the same polling budget. Keep all three at zero for immediate board actions; add only the shortest delay the app needs. Polling sleeps use the remaining budget, and no new capture starts after expiry; an already running ADB capture can finish after that budget under its command timeout.
 
 The result reports `elapsed_ms`, `wait_elapsed_ms`, `changed`, `input_transport`, `frame_transport`, the frame hash/MIME type, and `timing_ms` split into preflight, input, settle, observation, and postflight. That distinguishes device overhead and fast-path use from the model's reasoning/tool-call latency.
+
+`changed` compares encoded hashes only when transport, MIME type, and dimensions match the previous session observation. When these differ, it returns `null` with `change_reason: "capture_pipeline_changed"`, skips further change polling, and returns the new observation. Callers must handle this third value. Encoded hash changes are not proof of a semantic UI change.
+
+`stable` is `true` only after matching sampled frames span the requested quiet window, `false` when an observed change fails to settle before expiry, and `null` when stability was not evaluated. `timed_out` identifies an unmet change or stability request at expiry. `frame_transport` always describes the final image, including an ADB image returned after stream fallback or change polling.
+
+Stream observations wait beyond a sequence barrier taken after input and settling. The stream timestamp records host receipt, which cannot prove device-side capture time because encoding and transport can buffer frames. Use a fresh ADB capture when strict verification requires an independent observation. Decoder exit clears cached frames so a dead stream cannot advertise stale observations as available.
 
 ## Physical latency benchmark
 
